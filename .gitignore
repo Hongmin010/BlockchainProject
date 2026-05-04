@@ -1,0 +1,76 @@
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Frontend build outputs
+# =========================
+dist/
+build/
+.vite/
+.next/
+out/
+
+# =========================
+# Hardhat / Solidity
+# =========================
+contracts/artifacts/
+contracts/cache/
+contracts/typechain/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+
+# Hardhat Ignition local deployment cache
+contracts/ignition/deployments/
+contracts/ignition/artifacts/
+
+# =========================
+# Backend
+# =========================
+backend/dist/
+backend/build/
+backend/logs/
+*.log
+
+# =========================
+# Database / local files
+# =========================
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Test / coverage
+# =========================
+coverage/
+.nyc_output/
+
+# =========================
+# Misc
+# =========================
+.tmp/
+temp/
