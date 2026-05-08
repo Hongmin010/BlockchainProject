@@ -1,12 +1,22 @@
 /**
  * ============================================================
- *  REST API 서버 (Express) — v1.0
+ *  REST API 서버 (Express) — v2.0
  * ============================================================
  *
  *  목적
  *  ----
  *  인덱서가 채워둔 PostgreSQL 데이터를 외부(프론트엔드 데모,
  *  발표 대시보드)에 노출한다.
+ *
+ *  V1 → V2 변경 요약
+ *  -----------------
+ *   - 모든 통계 쿼리는 attempts 테이블 단일 소스로.
+ *     (vrf_requests 가 attempts 에 흡수됐기 때문)
+ *   - GET /api/attempts/:attemptId 응답 구조 변경:
+ *       V1: { attempt: {...}, vrf: {...} } 분리
+ *       V2: { attempt: { ..., randomness_request_id, random_value },
+ *             verification: {...} }   — VRF 정보가 attempt 안에 통합됨
+ *   - status enum 'fulfilled' → 'completed' 로 명칭 변경.
  *
  *  설계 원칙
  *  ---------
@@ -68,6 +78,7 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'khu-blockchain-backend',
+    version: '2.0',
     timestamp: new Date().toISOString(),
   });
 });
@@ -102,12 +113,20 @@ app.get('/health', (_req, res) => {
  *   - observedTotal < 30   → 'insufficient_data'
  *   - p < 0.01             → 'suspicious'
  *   - 그 외                 → 'plausible'
+ *
+ *  V2 SQL 쿼리 (단일 소스 — attempts 만):
+ *    SELECT before_level,
+ *           COUNT(*)                                        AS total,
+ *           COUNT(*) FILTER (WHERE success)                 AS hits,
+ *           AVG(claimed_success_rate)::int                  AS declared_bp
+ *      FROM attempts
+ *     WHERE status='completed'
+ *     GROUP BY before_level
+ *     ORDER BY before_level;
  */
 app.get('/api/stats/by-level', async (_req, res) => {
   // TODO:
-  //  1) SELECT before_level, COUNT(*) AS total, COUNT(success) FILTER (WHERE success) AS hits,
-  //            AVG(claimed_success_rate)::int AS declared_bp
-  //     FROM attempts WHERE status='fulfilled' GROUP BY before_level
+  //  1) 위 SQL 실행
   //  2) Wilson CI 계산 (utils/stats.js 로 분리 예정)
   //  3) 카이제곱 검정 1자유도 — chi2 = (observed - expected)^2 / expected * ...
   //  4) fairnessVerdict 라벨 부착
@@ -117,6 +136,9 @@ app.get('/api/stats/by-level', async (_req, res) => {
 /** GET /api/stats/global — 전체 누적 통계 */
 app.get('/api/stats/global', async (_req, res) => {
   // TODO: 전체 시도 수, 성공률, 활성 사용자 수, 누적 VRF 응답 평균 지연 등
+  //   - 누적 VRF 응답 지연 = AVG(completed_at - requested_at) FROM attempts
+  //     WHERE status='completed'
+  //   - 모두 attempts 단일 테이블에서 계산 가능 (V2 단순화 효과)
   res.status(501).json({ error: 'not_implemented' });
 });
 
@@ -124,6 +146,9 @@ app.get('/api/stats/global', async (_req, res) => {
 app.get('/api/stats/user/:address', async (req, res) => {
   const { address } = req.params;
   // TODO: address lowercase 정규화 + 유효성 검증(0x..40hex) 후 DB 조회
+  //   - SELECT COUNT(*) total, COUNT(*) FILTER (WHERE success) hits ...
+  //     FROM attempts WHERE user_address = $1 AND status='completed'
+  //   - 보유 아이템 현황(user_items) 도 함께 반환 가능 — 백엔드 자동 갱신된 테이블
   res.status(501).json({ error: 'not_implemented', address });
 });
 
@@ -135,32 +160,53 @@ app.get('/api/stats/user/:address', async (req, res) => {
 /** GET /api/attempts/recent — 최근 시도 목록 (limit=20 default) */
 app.get('/api/attempts/recent', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
-  // TODO: SELECT * FROM attempts ORDER BY attempted_at DESC LIMIT $limit
+  // TODO: SELECT * FROM attempts ORDER BY requested_at DESC LIMIT $limit
   res.status(501).json({ error: 'not_implemented', limit });
 });
 
 /**
  * GET /api/attempts/:attemptId   ★ VRF 재검증 엔드포인트
  *
- *  attempts + vrf_requests 를 JOIN 하여 하나의 시도에 대한
- *  요청-VRF요청-VRF응답-결과 4단계 일치 여부를 반환한다.
+ *  V2 변경: V1 처럼 attempts + vrf_requests 를 JOIN 할 필요 없이,
+ *  attempts 한 행만 조회하면 VRF 정보까지 모두 들어 있다.
  *
- *  반환 형식 (예시)
- *  ---------------
+ *  반환 형식 (V2)
+ *  --------------
  *  {
- *    attempt: { ... attempts row ... },
- *    vrf:     { ... vrf_requests row ... },
+ *    attempt: {
+ *      attemptId: "...",
+ *      userAddress: "0x...",
+ *      itemId: "...",
+ *      beforeLevel: 7,
+ *      afterLevel:  8,
+ *      claimedSuccessRate: 5000,
+ *      success: true,
+ *      randomnessRequestId: "0x...",   // ★ V1 에선 vrf 객체에 있던 필드
+ *      randomValue: "12345...",         // ★ V1 에선 vrf 객체에 있던 필드
+ *      status: 'completed',
+ *      requestedAt:  "...",
+ *      completedAt:  "...",
+ *      requestedTxHash:  "0x...",
+ *      completedTxHash:  "0x..."
+ *    },
  *    verification: {
- *      randomValueMatch: true,       // attempts.random_value == vrf_requests.random_value ?
- *      successDerived:   true,       // 우리 측 재계산한 success 와 컨트랙트 결과 일치 ?
- *      // 재계산 방법: (randomValue % 10000) < successRate ⇒ success
- *      // (실제 컨트랙트 로직과 동일하게 맞춰야 함 — 본구현 시 컨트랙트 팀과 공식 확정)
+ *      successDerived: true,
+ *      // 재계산: (randomValue % 10000) < claimedSuccessRate ⇒ success
+ *      // 컨트랙트 결과(success)와 일치 여부.
+ *      // 본구현 시 컨트랙트 팀과 결과 산출 공식 공식 확정 필요.
  *    }
  *  }
  */
 app.get('/api/attempts/:attemptId', async (req, res) => {
   const { attemptId } = req.params;
-  // TODO: 위 verification 로직 구현
+  // TODO:
+  //   - SELECT attempt_id, user_address, item_id, before_level, after_level,
+  //            claimed_success_rate, success, randomness_request_id, random_value,
+  //            status, requested_*, completed_*
+  //     FROM attempts WHERE attempt_id = $1
+  //   - status='completed' 인 경우만 verification 계산
+  //   - verification.successDerived = (BigInt(random_value) % 10000n) < BigInt(claimed_success_rate)
+  //                                    === success
   res.status(501).json({ error: 'not_implemented', attemptId });
 });
 
@@ -204,7 +250,7 @@ app.use((err, _req, res, _next) => {
 // ------------------------------------------------------------
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`[api] 서버 부팅 완료: http://localhost:${PORT}`);
+    console.log(`[api] 서버 부팅 완료 (v2.0): http://localhost:${PORT}`);
   });
 }
 

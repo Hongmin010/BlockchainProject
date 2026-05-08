@@ -1,23 +1,29 @@
 /**
  * ============================================================
- *  이벤트 인덱서 (Event Indexer) — v1.0
+ *  이벤트 인덱서 (Event Indexer) — v2.0
  * ============================================================
  *
  *  목적
  *  ----
- *  스마트 컨트랙트에서 발생하는 6종 이벤트를 폴링하여
+ *  스마트 컨트랙트에서 발생하는 3종 이벤트를 폴링하여
  *  PostgreSQL DB(`db/schema.sql`)에 영속화한다.
  *  체인 직접 쿼리는 느리고 비싸므로, 우리 서비스는
  *  "인덱싱된 DB" 를 통해 빠른 통계/검증/대시보드 응답을 제공한다.
  *
- *  처리 대상 이벤트 (docs/events.md 의 v1.0 명세)
+ *  V1 → V2 변경 요약
+ *  -----------------
+ *   - 처리 이벤트 6개 → 3개 (요청+VRF송신 통합, 결과+VRF응답 통합,
+ *     UserItemStateUpdated 제거).
+ *   - vrf_requests 테이블 흡수 → attempts 한 행에서 라이프사이클 추적.
+ *   - user_items 갱신은 컨트랙트 이벤트 없이 백엔드가 자동 UPSERT.
+ *     ★ EnhancementCompleted 핸들러에서 attempts UPDATE 와
+ *       user_items UPSERT 를 한 DB 트랜잭션으로 묶는다.
+ *
+ *  처리 대상 이벤트 (docs/events.md 의 v2.0 명세)
  *  ----------------------------------------------
- *   (1) EnhancementAttempted     → attempts INSERT
- *   (2) EnhancementResult        → attempts UPDATE
- *   (3) RandomnessRequested      → vrf_requests INSERT
- *   (4) RandomnessFulfilled      → vrf_requests UPDATE
- *   (5) UserItemStateUpdated     → user_items UPSERT
- *   (6) ProbabilityTableUpdated  → probability_history INSERT (★ 차별화)
+ *   (1) EnhancementRequested     → attempts INSERT
+ *   (2) EnhancementCompleted     → attempts UPDATE  +  user_items UPSERT (★ 한 트랜잭션)
+ *   (3) ProbabilityTableUpdated  → probability_history INSERT (★ 차별화)
  *
  *  ────────────────────────────────────────────────────────────
  *  핵심 설계 결정 (발표 시 설명용 요약)
@@ -43,18 +49,18 @@
  *      활용한 ON CONFLICT DO NOTHING 으로 작성한다.
  *      이벤트가 두 번 도착해도 DB 상태는 동일.
  *
- *  [E] 도착 순서 비결정성
- *      같은 attemptId 에 대해
- *      EnhancementAttempted → RandomnessRequested →
- *      RandomnessFulfilled → EnhancementResult
- *      순서가 보장되지 않을 수 있음(다른 블록에 있을 수 있고,
- *      한 batch 안에서도 처리 순서가 흔들릴 수 있음).
- *      → 각 핸들러는 자기 테이블만 건드리고, JOIN 으로 조립한다.
+ *  [E] 도착 순서 비결정성 + DB 트랜잭션
+ *      같은 attemptId 에 대해 EnhancementRequested 보다
+ *      EnhancementCompleted 가 먼저 도착할 수 있다(reorg/재처리 등).
+ *      → UPSERT 패턴으로 순서 무관하게 처리.
+ *      → ★ EnhancementCompleted 핸들러는 반드시 db.transaction 으로
+ *        attempts UPDATE 와 user_items UPSERT 를 원자적으로 수행.
+ *        한쪽만 갱신되어 무결성이 깨지는 상황을 차단한다.
  *
  *  TODO (발표 후 본구현)
  *  ---------------------
  *   - 실제 ABI 로드 (artifacts/Enhancement.json 등)
- *   - 각 handle* 함수의 DB INSERT/UPDATE 작성
+ *   - 각 handle* 함수의 DB 쿼리 작성
  *   - 에러 발생 시 알림(Slack webhook 등)
  *   - WebSocket 실시간 구독 모드 추가
  * ============================================================
@@ -81,27 +87,26 @@ const CONFIRMATION_BLOCKS = Number(process.env.CONFIRMATION_BLOCKS || 5);
 
 
 // ------------------------------------------------------------
-//  대상 이벤트 시그니처 (docs/events.md v1.0 와 일치해야 함)
+//  대상 이벤트 시그니처 (docs/events.md v2.0 와 일치해야 함)
 // ------------------------------------------------------------
 //  ethers v6 의 Interface 가 keccak256 으로 자동 토픽 계산.
 //  컨트랙트 ABI 파일이 준비되면 이 배열은 ABI 로 대체 가능.
+//
+//  ★ V2: 6개 → 3개로 축소
+//   - EnhancementAttempted + RandomnessRequested → EnhancementRequested
+//   - EnhancementResult + RandomnessFulfilled    → EnhancementCompleted
+//   - UserItemStateUpdated                        → 제거 (백엔드 자동 갱신)
 // ------------------------------------------------------------
 const EVENT_SIGNATURES = [
-  'event EnhancementAttempted(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint8 beforeLevel, uint8 enhancementType, uint32 successRate)',
-  'event EnhancementResult(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint8 beforeLevel, uint8 afterLevel, bool success, uint32 successRate, uint256 randomValue)',
-  'event RandomnessRequested(uint256 indexed attemptId, address indexed user, bytes32 randomnessRequestId)',
-  'event RandomnessFulfilled(uint256 indexed attemptId, bytes32 indexed randomnessRequestId, uint256 randomValue)',
-  'event UserItemStateUpdated(address indexed user, uint256 indexed itemId, uint8 level, uint256 totalAttempts)',
+  'event EnhancementRequested(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint8 beforeLevel, uint8 enhancementType, uint32 successRate, bytes32 randomnessRequestId)',
+  'event EnhancementCompleted(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, bytes32 randomnessRequestId, uint256 randomValue, uint8 beforeLevel, uint8 afterLevel, bool success, uint32 successRate)',
   'event ProbabilityTableUpdated(uint8 indexed level, uint32 oldSuccessRate, uint32 newSuccessRate, uint256 timestamp)',
 ];
 
 // 이벤트명 → 핸들러 매핑 (아래에서 정의)
 const EVENT_HANDLERS = {
-  EnhancementAttempted: handleEnhancementAttempted,
-  EnhancementResult: handleEnhancementResult,
-  RandomnessRequested: handleRandomnessRequested,
-  RandomnessFulfilled: handleRandomnessFulfilled,
-  UserItemStateUpdated: handleUserItemStateUpdated,
+  EnhancementRequested: handleEnhancementRequested,
+  EnhancementCompleted: handleEnhancementCompleted,
   ProbabilityTableUpdated: handleProbabilityTableUpdated,
 };
 
@@ -110,17 +115,17 @@ const EVENT_HANDLERS = {
 //  메인 루프
 // ============================================================
 async function main() {
-  console.log('[indexer] 부팅');
+  console.log('[indexer] 부팅 (v2.0)');
   console.log('[indexer]   RPC          :', RPC_URL);
   console.log('[indexer]   CONTRACT     :', CONTRACT_ADDRESS);
   console.log('[indexer]   BATCH_SIZE   :', BATCH_SIZE);
   console.log('[indexer]   CONFIRM_BLKS :', CONFIRMATION_BLOCKS);
 
-  // TODO: pg.Pool 로 DATABASE_URL 연결
+  // TODO: pg.Pool 로 DATABASE_URL 연결, 트랜잭션 헬퍼(db.transaction) 준비
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const iface = new ethers.Interface(EVENT_SIGNATURES);
 
-  // 무한 폴링 루프
+  // 무한 폴링 루프 ([A] 참고)
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
@@ -136,7 +141,7 @@ async function main() {
 
 /**
  * 한 사이클: cursor 부터 (latest - CONFIRMATION_BLOCKS) 까지
- * BATCH_SIZE 단위로 끊어 처리.
+ * BATCH_SIZE 단위로 끊어 처리. ([B], [C] 참고)
  */
 async function tick(provider, iface) {
   const latest = await provider.getBlockNumber();
@@ -203,60 +208,141 @@ async function dispatch(iface, log) {
 
 
 // ============================================================
-//  이벤트별 핸들러 (placeholder)
+//  이벤트별 핸들러 (placeholder — DB 구현은 본구현 단계)
 // ============================================================
 //  각 함수는 args (이벤트 인자) + meta (블록/트랜잭션 메타) 를 받고
 //  schema.sql 의 해당 테이블에 멱등하게 INSERT/UPDATE 를 수행한다.
 // ============================================================
 
-/** (1) EnhancementAttempted → attempts INSERT (status='pending') */
-async function handleEnhancementAttempted(args, meta) {
-  // args: { attemptId, user, itemId, beforeLevel, enhancementType, successRate }
-  // TODO: INSERT INTO attempts (...) VALUES (...) ON CONFLICT (attempted_tx_hash, attempted_log_index) DO NOTHING
-  console.log('[indexer] EnhancementAttempted', args.attemptId?.toString());
+/**
+ * (1) EnhancementRequested → attempts INSERT (status='pending')
+ *
+ *  args: { attemptId, user, itemId, beforeLevel, enhancementType,
+ *          successRate, randomnessRequestId }
+ *
+ *  DB:
+ *    INSERT INTO attempts
+ *      (attempt_id, user_address, item_id, enhancement_type, before_level,
+ *       claimed_success_rate, randomness_request_id, status,
+ *       requested_tx_hash, requested_log_index, requested_block, requested_at)
+ *    VALUES (...)
+ *    ON CONFLICT (requested_tx_hash, requested_log_index) DO NOTHING;
+ *
+ *  멱등성: 위 ON CONFLICT 절이 (tx_hash, log_index) UNIQUE 제약을 활용. ([D])
+ *
+ *  도착 순서: Completed 가 먼저 도착해 행이 이미 존재할 가능성도 있다 ([E]).
+ *            그 경우엔 attempt_id PK 충돌이 날 수 있으므로,
+ *            본구현 시 attempt_id 기준 ON CONFLICT DO UPDATE 로 보강해
+ *            requested_* 메타만 채우는 패턴이 필요할 수 있다.
+ */
+async function handleEnhancementRequested(args, meta) {
+  // TODO (본구현):
+  //   - user_address 는 lowercase 정규화
+  //   - randomnessRequestId 는 hex string 그대로 저장
+  //   - 위 INSERT 쿼리 실행
+  console.log(
+    '[indexer] EnhancementRequested',
+    'attempt=', args.attemptId?.toString(),
+    'user=', args.user,
+    'item=', args.itemId?.toString(),
+    'rate=', args.successRate?.toString(),
+    'vrfReqId=', args.randomnessRequestId
+  );
 }
 
-/** (2) EnhancementResult → attempts UPDATE (status='fulfilled') */
-async function handleEnhancementResult(args, meta) {
-  // args: { attemptId, user, itemId, beforeLevel, afterLevel, success, successRate, randomValue }
-  // TODO: UPDATE attempts SET after_level=$, success=$, random_value=$, status='fulfilled', fulfilled_*=$
-  //         WHERE attempt_id=$
-  // 주의: result 가 attempted 보다 먼저 도착할 수 있음 → INSERT ... ON CONFLICT UPDATE 패턴 권장
-  console.log('[indexer] EnhancementResult', args.attemptId?.toString(), 'success=', args.success);
+/**
+ * (2) EnhancementCompleted → attempts UPDATE + user_items UPSERT
+ *     ★ 반드시 한 DB 트랜잭션으로 ([E])
+ *
+ *  args: { attemptId, user, itemId, randomnessRequestId, randomValue,
+ *          beforeLevel, afterLevel, success, successRate }
+ *
+ *  ★ 핵심 설계 결정 (docs/design_decisions.md 결정 1):
+ *    user_items 는 컨트랙트 이벤트 없이 이 핸들러가 자동 UPSERT 한다.
+ *    attempts UPDATE 와 user_items UPSERT 를 한 트랜잭션으로 묶어
+ *    "결과는 기록됐는데 사용자 상태는 안 바뀐" 같은 무결성 깨짐을 차단.
+ *
+ *  의사 코드:
+ *    await db.transaction(async (tx) => {
+ *      // 1) attempts UPDATE
+ *      await tx.query(`
+ *        UPDATE attempts
+ *           SET after_level   = $1,
+ *               success       = $2,
+ *               random_value  = $3,
+ *               status        = 'completed',
+ *               completed_tx_hash   = $4,
+ *               completed_log_index = $5,
+ *               completed_block     = $6,
+ *               completed_at        = $7,
+ *               updated_at          = NOW()
+ *         WHERE attempt_id = $8
+ *      `, [...]);
+ *
+ *      // 2) user_items UPSERT (이벤트 없이 자동 — V2 설계 핵심) ★
+ *      await tx.query(`
+ *        INSERT INTO user_items
+ *          (user_address, item_id, level, total_attempts,
+ *           last_tx_hash, last_log_index, last_block, last_updated_at)
+ *        VALUES ($1, $2, $3, 1, $4, $5, $6, $7)
+ *        ON CONFLICT (user_address, item_id) DO UPDATE
+ *          SET level           = EXCLUDED.level,
+ *              total_attempts  = user_items.total_attempts + 1,
+ *              last_tx_hash    = EXCLUDED.last_tx_hash,
+ *              last_log_index  = EXCLUDED.last_log_index,
+ *              last_block      = EXCLUDED.last_block,
+ *              last_updated_at = EXCLUDED.last_updated_at,
+ *              updated_at      = NOW()
+ *          -- reorg-safe: 이미 더 큰 last_block 이 들어가 있으면 덮어쓰지 않음
+ *          WHERE user_items.last_block <= EXCLUDED.last_block;
+ *      `, [...]);
+ *    });
+ *
+ *  멱등성 보강:
+ *   - attempts UPDATE 는 status='pending' 인 경우만 변경하도록 가드 추가 가능.
+ *   - user_items 의 last_block 비교로 옛 이벤트 재처리 방지.
+ */
+async function handleEnhancementCompleted(args, meta) {
+  // TODO (본구현):
+  //   await db.transaction(async (tx) => {
+  //     // 1) attempts UPDATE (위 의사 코드 참고)
+  //     // 2) user_items UPSERT — 이벤트 없이 백엔드가 자동 갱신 ★
+  //   });
+  console.log(
+    '[indexer] EnhancementCompleted',
+    'attempt=', args.attemptId?.toString(),
+    'user=', args.user,
+    'item=', args.itemId?.toString(),
+    'beforeL=', args.beforeLevel,
+    'afterL=', args.afterLevel,
+    'success=', args.success,
+    'random=', args.randomValue?.toString()
+  );
 }
 
-/** (3) RandomnessRequested → vrf_requests INSERT (status='pending') */
-async function handleRandomnessRequested(args, meta) {
-  // args: { attemptId, user, randomnessRequestId }
-  // TODO: INSERT INTO vrf_requests (randomness_request_id, attempt_id, user_address, ...)
-  //         VALUES (...) ON CONFLICT (requested_tx_hash, requested_log_index) DO NOTHING
-  console.log('[indexer] RandomnessRequested', args.randomnessRequestId);
-}
-
-/** (4) RandomnessFulfilled → vrf_requests UPDATE (status='fulfilled') */
-async function handleRandomnessFulfilled(args, meta) {
-  // args: { attemptId, randomnessRequestId, randomValue }
-  // TODO: UPDATE vrf_requests SET random_value=$, status='fulfilled', fulfilled_*=$
-  //         WHERE randomness_request_id=$
-  console.log('[indexer] RandomnessFulfilled', args.randomnessRequestId);
-}
-
-/** (5) UserItemStateUpdated → user_items UPSERT */
-async function handleUserItemStateUpdated(args, meta) {
-  // args: { user, itemId, level, totalAttempts }
-  // TODO: INSERT INTO user_items (...) VALUES (...) ON CONFLICT (user_address, item_id) DO UPDATE
-  //         SET level=EXCLUDED.level, total_attempts=EXCLUDED.total_attempts, ...
-  //       단, last_block 이 더 큰 경우에만 UPDATE 하여 reorg-safe 하게 처리
-  console.log('[indexer] UserItemStateUpdated', args.user, args.itemId?.toString(), 'L', args.level);
-}
-
-/** (6) ProbabilityTableUpdated → probability_history INSERT (★ 차별화) */
+/**
+ * (3) ProbabilityTableUpdated → probability_history INSERT (★ 차별화)
+ *
+ *  args: { level, oldSuccessRate, newSuccessRate, timestamp }
+ *
+ *  DB:
+ *    INSERT INTO probability_history
+ *      (level, old_success_rate, new_success_rate, on_chain_timestamp,
+ *       tx_hash, log_index, block_number)
+ *    VALUES (...)
+ *    ON CONFLICT (tx_hash, log_index) DO NOTHING;
+ *
+ *  V2에서도 변경 없음 — 시도 이벤트와 라이프사이클이 다른 운영자 행위.
+ */
 async function handleProbabilityTableUpdated(args, meta) {
-  // args: { level, oldSuccessRate, newSuccessRate, timestamp }
-  // TODO: INSERT INTO probability_history (...) VALUES (...)
-  //         ON CONFLICT (tx_hash, log_index) DO NOTHING
-  console.log('[indexer] ProbabilityTableUpdated', 'L', args.level,
-              args.oldSuccessRate?.toString(), '→', args.newSuccessRate?.toString());
+  // TODO (본구현):
+  //   - timestamp(uint256, 초) 를 to_timestamp() 로 TIMESTAMPTZ 변환
+  //   - 위 INSERT 쿼리 실행
+  console.log(
+    '[indexer] ProbabilityTableUpdated',
+    'L', args.level,
+    args.oldSuccessRate?.toString(), '→', args.newSuccessRate?.toString()
+  );
 }
 
 
