@@ -34,3 +34,6 @@ Thumbs.db
 .npm
 .eslintcache
 .cache/
+
+# Claude Code 로컬 설정 (settings.local.json, 세션 캐시 등)
+.claude/
