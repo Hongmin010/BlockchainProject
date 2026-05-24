@@ -1,11 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract EnhancementGame {
-    address public owner;
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+
+contract EnhancementGame is VRFConsumerBaseV2Plus {
     uint256 public nextAttemptId = 1;
 
     uint32 public constant RATE_DENOMINATOR = 10000; // 10000 = 100.00%
+    uint8 public constant MAX_LEVEL = 5;
+
+    // Base Sepolia VRF v2.5 Coordinator
+    address private constant BASE_SEPOLIA_VRF_COORDINATOR =
+        0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE;
+
+    bytes32 private constant KEY_HASH =
+        0x9e1344a1247c8a1785d0a4681a27152bffdb43666ae5bf7d14d24a5efd44bf71;
+
+    uint256 public immutable subscriptionId;
+
+    uint32 public callbackGasLimit = 200_000;
+    uint16 public requestConfirmations = 3;
+    uint32 public numWords = 1;
+    bool public nativePayment = true;
 
     struct ItemState {
         uint8 level;
@@ -18,6 +35,7 @@ contract EnhancementGame {
         uint8 beforeLevel;
         uint8 enhancementType;
         uint32 successRate;
+        uint256 vrfRequestId;
         bool resolved;
     }
 
@@ -26,7 +44,10 @@ contract EnhancementGame {
     mapping(uint256 => Attempt) public attempts;
 
     // VRF requestId => attemptId
-    mapping(bytes32 => uint256) public vrfRequestToAttemptId;
+    mapping(uint256 => uint256) public vrfRequestToAttemptId;
+
+    // user => itemId => pending attemptId
+    mapping(address => mapping(uint256 => uint256)) public pendingAttemptOfItem;
 
     event EnhancementAttempted(
         uint256 indexed attemptId,
@@ -51,12 +72,12 @@ contract EnhancementGame {
     event RandomnessRequested(
         uint256 indexed attemptId,
         address indexed user,
-        bytes32 randomnessRequestId
+        uint256 randomnessRequestId
     );
 
     event RandomnessFulfilled(
         uint256 indexed attemptId,
-        bytes32 indexed randomnessRequestId,
+        uint256 indexed randomnessRequestId,
         uint256 randomValue
     );
 
@@ -74,13 +95,10 @@ contract EnhancementGame {
         uint256 timestamp
     );
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
-        _;
-    }
-
-    constructor() {
-        owner = msg.sender;
+    constructor(uint256 _subscriptionId)
+        VRFConsumerBaseV2Plus(BASE_SEPOLIA_VRF_COORDINATOR)
+    {
+        subscriptionId = _subscriptionId;
 
         probabilityTable[0] = 9000; // 90%
         probabilityTable[1] = 7000; // 70%
@@ -90,11 +108,17 @@ contract EnhancementGame {
     }
 
     function enhance(uint256 itemId, uint8 enhancementType) external {
+        require(
+            pendingAttemptOfItem[msg.sender][itemId] == 0,
+            "Enhancement already pending"
+        );
+
         ItemState storage item = userItems[msg.sender][itemId];
 
         uint8 beforeLevel = item.level;
-        uint32 successRate = probabilityTable[beforeLevel];
+        require(beforeLevel < MAX_LEVEL, "Already max level");
 
+        uint32 successRate = probabilityTable[beforeLevel];
         require(successRate > 0, "Invalid success rate");
 
         uint256 attemptId = nextAttemptId++;
@@ -105,6 +129,7 @@ contract EnhancementGame {
             beforeLevel: beforeLevel,
             enhancementType: enhancementType,
             successRate: successRate,
+            vrfRequestId: 0,
             resolved: false
         });
 
@@ -117,25 +142,43 @@ contract EnhancementGame {
             successRate
         );
 
-        bytes32 randomnessRequestId = _requestRandomness(attemptId);
+        uint256 randomnessRequestId = _requestRandomness(attemptId);
 
+        attempts[attemptId].vrfRequestId = randomnessRequestId;
         vrfRequestToAttemptId[randomnessRequestId] = attemptId;
+        pendingAttemptOfItem[msg.sender][itemId] = attemptId;
 
-        emit RandomnessRequested(
-            attemptId,
-            msg.sender,
-            randomnessRequestId
+        emit RandomnessRequested(attemptId, msg.sender, randomnessRequestId);
+    }
+
+    function _requestRandomness(uint256 attemptId) internal returns (uint256) {
+        attemptId;
+
+        return s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: KEY_HASH,
+                subId: subscriptionId,
+                requestConfirmations: requestConfirmations,
+                callbackGasLimit: callbackGasLimit,
+                numWords: numWords,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: nativePayment})
+                )
+            })
         );
     }
 
-    function _requestRandomness(uint256 attemptId) internal returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(block.number, block.timestamp, attemptId, msg.sender)
-        );
+    function fulfillRandomWords(
+        uint256 randomnessRequestId,
+        uint256[] calldata randomWords
+    ) internal override {
+        fulfillRandomness(randomnessRequestId, randomWords[0]);
     }
 
-    function fulfillRandomness(bytes32 randomnessRequestId, uint256 randomValue) external onlyOwner {
-        // 실제 Chainlink VRF에서는 이 함수가 아니라 fulfillRandomWords 콜백에서 처리
+    function fulfillRandomness(
+        uint256 randomnessRequestId,
+        uint256 randomValue
+    ) internal {
         uint256 attemptId = vrfRequestToAttemptId[randomnessRequestId];
         require(attemptId != 0, "Invalid randomness request");
 
@@ -144,7 +187,7 @@ contract EnhancementGame {
 
     function _resolveEnhancement(
         uint256 attemptId,
-        bytes32 randomnessRequestId,
+        uint256 randomnessRequestId,
         uint256 randomValue
     ) internal {
         Attempt storage attempt = attempts[attemptId];
@@ -166,6 +209,9 @@ contract EnhancementGame {
         }
 
         item.totalAttempts += 1;
+
+        delete vrfRequestToAttemptId[randomnessRequestId];
+        delete pendingAttemptOfItem[attempt.user][attempt.itemId];
 
         emit RandomnessFulfilled(
             attemptId,
@@ -192,7 +238,11 @@ contract EnhancementGame {
         );
     }
 
-    function updateProbability(uint8 level, uint32 newSuccessRate) external onlyOwner {
+    function updateProbability(
+        uint8 level,
+        uint32 newSuccessRate
+    ) external onlyOwner {
+        require(level < MAX_LEVEL, "Invalid level");
         require(newSuccessRate <= RATE_DENOMINATOR, "Rate too high");
 
         uint32 oldSuccessRate = probabilityTable[level];
@@ -204,6 +254,16 @@ contract EnhancementGame {
             newSuccessRate,
             block.timestamp
         );
+    }
+
+    function setVrfConfig(
+        uint32 _callbackGasLimit,
+        uint16 _requestConfirmations,
+        bool _nativePayment
+    ) external onlyOwner {
+        callbackGasLimit = _callbackGasLimit;
+        requestConfirmations = _requestConfirmations;
+        nativePayment = _nativePayment;
     }
 
     function getUserItemState(
