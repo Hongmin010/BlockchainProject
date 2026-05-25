@@ -1,0 +1,30 @@
+{
+  "name": "khu-blockchain-backend",
+  "version": "0.1.0",
+  "description": "KHU 블록체인 프로젝트 - 게임 확률 검증 백엔드 (이벤트 인덱서 + REST API)",
+  "main": "api/server.js",
+  "scripts": {
+    "start": "node api/server.js",
+    "dev": "node --watch api/server.js",
+    "indexer": "node indexer/indexer.js",
+    "indexer:dev": "node --watch indexer/indexer.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "vrf",
+    "indexer",
+    "khu"
+  ],
+  "author": "KHU Blockchain Team",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.2",
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}

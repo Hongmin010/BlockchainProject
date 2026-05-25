@@ -1,0 +1,378 @@
+/**
+ * ============================================================
+ *  REST API 서버 (Express) — v3 (배포본 일치화)
+ * ============================================================
+ *
+ *  목적
+ *  ----
+ *  인덱서가 채워둔 PostgreSQL 데이터를 외부(프론트엔드 데모,
+ *  발표 대시보드)에 노출한다.
+ *
+ *  V2 → V3 변경 요약 (배포본 일치화)
+ *  --------------------------------
+ *   - 컬럼명: randomness_request_id → vrf_request_id  (bytes32 → uint256)
+ *   - 응답 필드: randomnessRequestId → vrfRequestId
+ *   - 그 외 라우트 구조/응답 형태는 V2 와 동일
+ *     (attempts 단일 소스, status enum 'completed').
+ *   - 자세한 배경: docs/events.md 의 V2 → V3 차이 매핑 참고.
+ *
+ *  설계 원칙
+ *  ---------
+ *  - 모든 경로는 `/api/*` prefix 로 통일 (`/health` 제외).
+ *  - 응답은 항상 JSON. 에러 응답도 { error, message? } 형태로 통일.
+ *  - 데이터 가공(통계 검정 등)은 SQL 한 방으로 처리하기보다,
+ *    `utils/stats.js` 의 순수 함수로 분리하여 단위 테스트 가능하도록 둔다.
+ *  - DB 풀은 lazy singleton (`db/pool.js`). 라우트 핸들러는 throw 시
+ *    하단 공통 에러 핸들러로 흘려보낸다.
+ *
+ *  엔드포인트 요약 (★ = 차별화 포인트와 직접 연결)
+ *  ----------------------------------------------
+ *   GET /health                          서버/DB 헬스체크
+ *
+ *   GET /api/stats/by-level              ★ 단계별 표기 vs 실측 + 통계 검정
+ *   GET /api/stats/global                전체 누적 통계
+ *   GET /api/stats/user/:address         사용자별 시도 통계 + 보유 아이템
+ *
+ *   GET /api/attempts/recent             최근 시도 목록 (대시보드용)
+ *   GET /api/attempts/:attemptId         ★ 시도 1건 상세 + VRF 재검증 결과
+ *
+ *   GET /api/probability/history         ★ 확률표 변경 이력
+ *
+ *  ※ 차별화 포인트 매핑
+ *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
+ *        → /api/stats/by-level, /api/stats/global, /api/stats/user/:address
+ *     #2 VRF 재검증 (off-chain re-derivation)
+ *        → /api/attempts/:attemptId
+ *     #3 확률표 변경 추적
+ *        → /api/probability/history
+ * ============================================================
+ */
+
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+
+const db = require('../db/pool');
+const { summarizeLevel, rateToBp } = require('../utils/stats');
+const { verifySuccess, normalizeAddress } = require('../utils/verify');
+
+const app = express();
+const PORT = Number(process.env.PORT || 3000);
+
+// ------------------------------------------------------------
+//  공통 미들웨어
+// ------------------------------------------------------------
+//  CORS: 발표 데모 페이지(별도 도메인)에서 호출할 수 있도록 전체 허용.
+//  운영 환경에선 origin 화이트리스트로 좁힐 것.
+app.use(cors());
+app.use(express.json());
+
+// 간이 요청 로거 (placeholder — 추후 morgan 도입 가능)
+app.use((req, _res, next) => {
+  console.log(`[api] ${req.method} ${req.url}`);
+  next();
+});
+
+
+// ------------------------------------------------------------
+//  헬스체크 — DB ping 포함
+// ------------------------------------------------------------
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  let dbError;
+  try {
+    await db.query('SELECT 1');
+    dbOk = true;
+  } catch (err) {
+    dbError = err.message;
+    console.error('[api] /health DB ping 실패:', err.message);
+  }
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'khu-blockchain-backend',
+    version: '2.0',
+    db: dbOk,
+    dbError,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+
+// ============================================================
+//  /api/stats/* — 통계 검정 계열 (차별화 #1)
+// ============================================================
+
+/**
+ * GET /api/stats/by-level   ★ 메인 엔드포인트
+ *
+ *  반환 형식
+ *  ---------
+ *  { levels: [{ beforeLevel, declaredRateBp, observedSuccess, observedTotal,
+ *               observedRateBp, wilson95:{lowBp,highBp},
+ *               chiSquare:{stat,pValue}, fairnessVerdict }, ...] }
+ *
+ *  fairnessVerdict 결정 규칙 (utils/stats.js:fairnessVerdict)
+ *   - observedTotal < 30   → 'insufficient_data'
+ *   - p < 0.01             → 'suspicious'
+ *   - 그 외                 → 'plausible'
+ *
+ *  declaredBp 출처
+ *  ---------------
+ *  attempts.claimed_success_rate 는 시도 시점에 컨트랙트가 적용한 값.
+ *  같은 before_level 에서 확률표가 도중에 바뀌었다면 평균이 의미를 잃을 수 있으나,
+ *  V2 단순화 단계에선 단일 평균값을 declaredRateBp 로 노출한다.
+ *  (확률 변경 이력은 별도 /api/probability/history 로 제공)
+ */
+app.get('/api/stats/by-level', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT before_level::int                            AS "beforeLevel",
+             AVG(claimed_success_rate)::int               AS "declaredBp",
+             COUNT(*) FILTER (WHERE success)::int         AS hits,
+             COUNT(*)::int                                AS total
+        FROM attempts
+       WHERE status = 'completed'
+       GROUP BY before_level
+       ORDER BY before_level
+    `);
+    res.json({ levels: rows.map(summarizeLevel) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/stats/global — 전체 누적 통계 */
+app.get('/api/stats/global', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT COUNT(*)::int                                                    AS completed,
+             COUNT(*) FILTER (WHERE success)::int                             AS hits,
+             COUNT(DISTINCT user_address)::int                                AS unique_users,
+             COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - requested_at))),
+                      0)::float                                               AS avg_vrf_latency_sec
+        FROM attempts
+       WHERE status = 'completed'
+    `);
+    const r = rows[0];
+    res.json({
+      completedAttempts: r.completed,
+      successes: r.hits,
+      observedRateBp: r.completed > 0 ? rateToBp(r.hits / r.completed) : 0,
+      uniqueUsers: r.unique_users,
+      avgVrfLatencySec: r.avg_vrf_latency_sec,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/stats/user/:address — 사용자별 시도 통계 + 보유 아이템 현황 */
+app.get('/api/stats/user/:address', async (req, res, next) => {
+  const address = normalizeAddress(req.params.address);
+  if (!address) {
+    return res.status(400).json({
+      error: 'invalid_address',
+      message: 'address must match /^0x[a-fA-F0-9]{40}$/',
+    });
+  }
+  try {
+    const [statsResult, itemsResult] = await Promise.all([
+      db.query(`
+        SELECT COUNT(*)::int                            AS total,
+               COUNT(*) FILTER (WHERE success)::int     AS hits
+          FROM attempts
+         WHERE user_address = $1 AND status = 'completed'
+      `, [address]),
+      db.query(`
+        SELECT item_id, level, total_attempts, last_updated_at
+          FROM user_items
+         WHERE user_address = $1
+         ORDER BY item_id
+      `, [address]),
+    ]);
+    const s = statsResult.rows[0];
+    res.json({
+      address,
+      completedAttempts: s.total,
+      successes: s.hits,
+      observedRateBp: s.total > 0 ? rateToBp(s.hits / s.total) : 0,
+      items: itemsResult.rows.map((row) => ({
+        itemId: row.item_id,
+        level: row.level,
+        totalAttempts: row.total_attempts,
+        lastUpdatedAt: row.last_updated_at,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ============================================================
+//  /api/attempts/* — 시도 조회 + VRF 재검증 (차별화 #2)
+// ============================================================
+
+/** GET /api/attempts/recent — 최근 시도 목록 (limit=20 default, max=100) */
+app.get('/api/attempts/recent', async (req, res, next) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+  try {
+    const { rows } = await db.query(`
+      SELECT attempt_id, user_address, item_id, before_level, after_level,
+             claimed_success_rate, success, vrf_request_id, random_value,
+             status, requested_at, completed_at,
+             requested_tx_hash, completed_tx_hash
+        FROM attempts
+       ORDER BY requested_at DESC
+       LIMIT $1
+    `, [limit]);
+    res.json({ limit, attempts: rows.map(formatAttempt) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/attempts/:attemptId   ★ VRF 재검증 엔드포인트
+ *
+ *  반환 형식 (V2)
+ *  --------------
+ *  {
+ *    attempt: { ..., randomnessRequestId, randomValue },
+ *    verification: {                  // status='completed' 인 경우만, 아니면 null
+ *      successDerived: boolean,        // (randomValue % 10000) < claimedSuccessRate
+ *      matchesContract: boolean,       // successDerived === attempt.success
+ *      formula: string,                // 사용된 공식 (가시화)
+ *    } | null
+ *  }
+ */
+app.get('/api/attempts/:attemptId', async (req, res, next) => {
+  const { attemptId } = req.params;
+  if (!/^\d+$/.test(attemptId)) {
+    return res.status(400).json({ error: 'invalid_attempt_id' });
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT attempt_id, user_address, item_id, before_level, after_level,
+             claimed_success_rate, success, vrf_request_id, random_value,
+             status, requested_at, completed_at,
+             requested_tx_hash, completed_tx_hash
+        FROM attempts
+       WHERE attempt_id = $1
+    `, [attemptId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'attempt_not_found', attemptId });
+    }
+
+    const row = rows[0];
+    const attempt = formatAttempt(row);
+
+    let verification = null;
+    if (row.status === 'completed' && row.random_value != null) {
+      const successDerived = verifySuccess(row.random_value, row.claimed_success_rate);
+      verification = {
+        successDerived,
+        matchesContract: successDerived === row.success,
+        formula: '(randomValue % 10000) < claimedSuccessRate',
+      };
+    }
+
+    res.json({ attempt, verification });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ============================================================
+//  /api/probability/* — 확률표 변경 추적 (차별화 #3)
+// ============================================================
+
+/**
+ * GET /api/probability/history
+ *
+ *  쿼리: ?level=7  (선택) — 특정 단계만 필터.
+ *  반환: 변경 이력 시간순(최신 → 과거).
+ */
+app.get('/api/probability/history', async (req, res, next) => {
+  let level = null;
+  if (req.query.level !== undefined) {
+    const parsed = Number(req.query.level);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 255) {
+      return res.status(400).json({ error: 'invalid_level' });
+    }
+    level = parsed;
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT level, old_success_rate, new_success_rate,
+             on_chain_timestamp, tx_hash, log_index, block_number
+        FROM probability_history
+       WHERE ($1::int IS NULL OR level = $1)
+       ORDER BY block_number DESC
+    `, [level]);
+    res.json({
+      level,
+      history: rows.map((row) => ({
+        level: row.level,
+        oldSuccessRateBp: row.old_success_rate,
+        newSuccessRateBp: row.new_success_rate,
+        onChainTimestamp: row.on_chain_timestamp,
+        txHash: row.tx_hash,
+        logIndex: row.log_index,
+        blockNumber: Number(row.block_number),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ============================================================
+//  공통 어댑터: attempts 행 → API 응답 형식
+// ============================================================
+function formatAttempt(row) {
+  return {
+    attemptId: row.attempt_id,
+    userAddress: row.user_address,
+    itemId: row.item_id,
+    beforeLevel: row.before_level,
+    afterLevel: row.after_level,
+    claimedSuccessRateBp: row.claimed_success_rate,
+    success: row.success,
+    vrfRequestId: row.vrf_request_id,
+    randomValue: row.random_value,
+    status: row.status,
+    requestedAt: row.requested_at,
+    completedAt: row.completed_at,
+    requestedTxHash: row.requested_tx_hash,
+    completedTxHash: row.completed_tx_hash,
+  };
+}
+
+
+// ------------------------------------------------------------
+//  공통 에러 핸들러 (라우트 매치 실패 + 라우트 내부 throw)
+// ------------------------------------------------------------
+app.use((_req, res) => {
+  res.status(404).json({ error: 'not_found' });
+});
+
+app.use((err, _req, res, _next) => {
+  console.error('[api] 처리 중 오류:', err);
+  res.status(500).json({ error: 'internal_error', message: err.message });
+});
+
+
+// ------------------------------------------------------------
+//  서버 시작
+// ------------------------------------------------------------
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[api] 서버 부팅 완료 (v2.0): http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
