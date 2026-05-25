@@ -75,6 +75,14 @@ const { ethers } = require('ethers');
 const db = require('../db/pool');
 
 // ------------------------------------------------------------
+//  컨트랙트 ABI (홍민 배포본 EnhancementGameVRF)
+//  - 파일: backend/abi/EnhancementGameVRF.json
+//  - `{ abi: [...] }` 또는 `[...]` 두 형식 모두 대응
+// ------------------------------------------------------------
+const abiJson = require('../abi/EnhancementGameVRF.json');
+const ABI = abiJson.abi || abiJson;
+
+// ------------------------------------------------------------
 //  환경변수 및 상수
 // ------------------------------------------------------------
 const RPC_URL = process.env.RPC_URL;
@@ -86,13 +94,20 @@ const CURSOR_ID = 'main';
 
 
 // ------------------------------------------------------------
-//  대상 이벤트 시그니처 (docs/events.md v3 와 일치해야 함)
+//  대상 이벤트 (docs/events.md v3 와 일치해야 함)
+//
+//  v3 부터 ABI 파일에서 직접 로드 → ethers.Interface 가 keccak256 토픽 해시를
+//  자동 계산. 컨트랙트가 추가 이벤트를 emit해도 인덱서가 죽지 않도록
+//  EVENT_HANDLERS 매핑에 없는 이벤트는 dispatch() 에서 안전하게 무시.
+//
+//  이전: 하드코딩 시그니처 (참고용 — ABI 도입 전 사용)
+//  -----------------------------------------------------
+//  const EVENT_SIGNATURES = [
+//    'event EnhancementRequested(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint256 vrfRequestId)',
+//    'event EnhancementResult(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint256 vrfRequestId, uint8 beforeLevel, uint8 afterLevel, uint8 resultType, uint16 successRateBps, uint256 randomValue)',
+//    'event ProbabilityTableUpdated(address indexed updater, uint8 indexed level, uint8 indexed enhancementType, uint16 oldSuccessRateBps, uint16 newSuccessRateBps)',
+//  ];
 // ------------------------------------------------------------
-const EVENT_SIGNATURES = [
-  'event EnhancementRequested(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint256 vrfRequestId)',
-  'event EnhancementResult(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint256 vrfRequestId, uint8 beforeLevel, uint8 afterLevel, uint8 resultType, uint16 successRateBps, uint256 randomValue)',
-  'event ProbabilityTableUpdated(address indexed updater, uint8 indexed level, uint8 indexed enhancementType, uint16 oldSuccessRateBps, uint16 newSuccessRateBps)',
-];
 
 const EVENT_HANDLERS = {
   EnhancementRequested: handleEnhancementRequested,
@@ -115,7 +130,7 @@ async function main() {
   if (!CONTRACT_ADDRESS) throw new Error('CONTRACT_ADDRESS not set — check backend/.env');
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const iface = new ethers.Interface(EVENT_SIGNATURES);
+  const iface = new ethers.Interface(ABI);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -392,6 +407,6 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  EVENT_SIGNATURES,
+  ABI,
   handlers: EVENT_HANDLERS,
 };
