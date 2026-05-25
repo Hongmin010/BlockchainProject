@@ -49,43 +49,26 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
     // user => itemId => pending attemptId
     mapping(address => mapping(uint256 => uint256)) public pendingAttemptOfItem;
 
-    event EnhancementAttempted(
+    event EnhancementRequested(
         uint256 indexed attemptId,
         address indexed user,
         uint256 indexed itemId,
+        bytes32 randomnessRequestId,
         uint8 beforeLevel,
         uint8 enhancementType,
         uint32 successRate
     );
 
-    event EnhancementResult(
+    event EnhancementCompleted(
         uint256 indexed attemptId,
         address indexed user,
         uint256 indexed itemId,
+        bytes32 randomnessRequestId,
         uint8 beforeLevel,
         uint8 afterLevel,
         bool success,
         uint32 successRate,
         uint256 randomValue
-    );
-
-    event RandomnessRequested(
-        uint256 indexed attemptId,
-        address indexed user,
-        uint256 randomnessRequestId
-    );
-
-    event RandomnessFulfilled(
-        uint256 indexed attemptId,
-        uint256 indexed randomnessRequestId,
-        uint256 randomValue
-    );
-
-    event UserItemStateUpdated(
-        address indexed user,
-        uint256 indexed itemId,
-        uint8 level,
-        uint256 totalAttempts
     );
 
     event ProbabilityTableUpdated(
@@ -133,22 +116,21 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
             resolved: false
         });
 
-        emit EnhancementAttempted(
-            attemptId,
-            msg.sender,
-            itemId,
-            beforeLevel,
-            enhancementType,
-            successRate
-        );
-
         uint256 randomnessRequestId = _requestRandomness(attemptId);
 
         attempts[attemptId].vrfRequestId = randomnessRequestId;
         vrfRequestToAttemptId[randomnessRequestId] = attemptId;
         pendingAttemptOfItem[msg.sender][itemId] = attemptId;
 
-        emit RandomnessRequested(attemptId, msg.sender, randomnessRequestId);
+        emit EnhancementRequested(
+            attemptId,
+            msg.sender,
+            itemId,
+            bytes32(randomnessRequestId),
+            beforeLevel,
+            enhancementType,
+            successRate
+        );
     }
 
     function _requestRandomness(uint256 attemptId) internal returns (uint256) {
@@ -213,28 +195,16 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         delete vrfRequestToAttemptId[randomnessRequestId];
         delete pendingAttemptOfItem[attempt.user][attempt.itemId];
 
-        emit RandomnessFulfilled(
-            attemptId,
-            randomnessRequestId,
-            randomValue
-        );
-
-        emit EnhancementResult(
+        emit EnhancementCompleted(
             attemptId,
             attempt.user,
             attempt.itemId,
+            bytes32(randomnessRequestId),
             attempt.beforeLevel,
             afterLevel,
             success,
             attempt.successRate,
             randomValue
-        );
-
-        emit UserItemStateUpdated(
-            attempt.user,
-            attempt.itemId,
-            item.level,
-            item.totalAttempts
         );
     }
 
