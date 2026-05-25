@@ -1,0 +1,55 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  /* ── Surfaces ── */
+  --bg-0: #14100c;
+  --bg-1: #1c1712;
+  --bg-2: #251e17;
+  --bg-3: #322a20;
+  --bg-4: #3f3528;
+
+  /* ── Wood grain ── */
+  --wood-warm: #4a3a28;
+  --wood-glow: rgba(255, 168, 95, 0.12);
+
+  /* ── Ink (text) ── */
+  --ink-1: #f5ecdf;
+  --ink-2: #c9b89d;
+  --ink-3: #8a7a64;
+  --ink-4: #5b4f40;
+
+  /* ── Brand — ember orange ── */
+  --ember-50: #fff2e3;
+  --ember-100: #ffd9b3;
+  --ember-300: #ffa85f;
+  --ember-500: #ff7a1a;
+  --ember-600: #e05f00;
+  --ember-700: #a64200;
+
+  /* ── Semantic ── */
+  --success: #5fc37a;
+  --success-bg: rgba(95, 195, 122, 0.14);
+  --fail: #e8623c;
+  --fail-bg: rgba(232, 98, 60, 0.14);
+  --link: #7eb4ff;
+
+  /* ── Effects ── */
+  --glow-ember:
+    0 0 24px rgba(255, 122, 26, 0.35), 0 0 60px rgba(255, 122, 26, 0.15);
+  --shadow-card:
+    0 1px 0 rgba(255, 222, 178, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-elevate: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  /* ── Radius ── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  /* ── Typography ── */
+  --font:
+    'Pretendard Variable', Pretendard, -apple-system, system-ui,
+    'Apple SD Gothic Neo', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
