@@ -38,7 +38,7 @@ export default function Records({ address, onConnect }) {
   const short = `${address.slice(0, 4)}…${address.slice(-4)}`;
 
   return (
-    <div className={styles.page}>
+    <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
 
       <div className={styles.inner}>

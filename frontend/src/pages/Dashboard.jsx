@@ -23,7 +23,7 @@ const CIRCUMFERENCE = 2 * Math.PI * 80;
 
 export default function Stats({ address, onConnect }) {
   return (
-    <div className={styles.page}>
+    <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
 
       <div className={styles.inner}>

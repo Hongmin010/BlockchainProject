@@ -90,7 +90,7 @@ export default function Game({ address, onConnect }) {
   };
 
   return (
-    <div className={styles.page}>
+    <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
 
       <div className={styles.grid}>

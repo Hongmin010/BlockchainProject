@@ -11,7 +11,7 @@ const STATS = [
 
 export default function Landing({ address, onConnect }) {
   return (
-    <div className={styles.page}>
+    <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
 
       {/* ── 히어로 섹션 ── */}
