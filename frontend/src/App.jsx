@@ -5,6 +5,7 @@ import './styles/global.css';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Records from './pages/Records';
+import Verify from './pages/Verify';
 
 const Placeholder = ({ name }) => (
   <div style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
@@ -40,7 +41,7 @@ export default function App() {
           element={<Dashboard address={address} onConnect={handleConnect} />}
         />
         <Route path="/records" element={<Records address={address} onConnect={handleConnect} />} />
-        <Route path="/verify" element={<Placeholder name="Verify" />} />
+        <Route path="/verify" element={<Verify address={address} onConnect={handleConnect} />} />
       </Routes>
     </BrowserRouter>
   );
