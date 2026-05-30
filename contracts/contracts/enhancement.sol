@@ -4,18 +4,16 @@ pragma solidity ^0.8.20;
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
-contract EnhancementGame is VRFConsumerBaseV2Plus {
-    uint256 public nextAttemptId = 1;
-
-    uint16 public constant RATE_DENOMINATOR = 10000; // 10000 = 100.00%
+contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
+    uint16 private constant BPS_DENOMINATOR = 10_000;
     uint8 public constant MAX_LEVEL = 5;
 
-    // Base Sepolia VRF v2.5 Coordinator
+    // Sepolia VRF v2.5 Coordinator
     address private constant BASE_SEPOLIA_VRF_COORDINATOR =
-        0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE;
+    0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE;
 
     bytes32 private constant KEY_HASH =
-        0x9e1344a1247c8a1785d0a4681a27152bffdb43666ae5bf7d14d24a5efd44bf71;
+    0x9e1344a1247c8a1785d0a4681a27152bffdb43666ae5bf7d14d24a5efd44bf71;
 
     uint256 public immutable subscriptionId;
 
@@ -24,17 +22,23 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
     uint32 public numWords = 1;
     bool public nativePayment = true;
 
-    struct ItemState {
-        uint8 level;
-    }
+    uint256 public nextAttemptId;
 
     enum AttemptState {
         None,
-        Pending,
-        Completed
+        PendingRandom
     }
 
-    struct Attempt {
+    enum ResultType {
+        Fail,
+        Success
+    }
+
+    struct UserItem {
+        uint8 level;
+    }
+
+    struct EnhancementAttempt {
         address user;
         uint256 itemId;
         uint8 beforeLevel;
@@ -44,16 +48,20 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         AttemptState state;
     }
 
-    mapping(address => mapping(uint256 => ItemState)) public userItems;
-    mapping(address => mapping(uint256 => uint256)) public totalAttemptsOfItem;
-    mapping(uint8 => mapping(uint8 => uint16)) public successRates;
-    mapping(uint256 => Attempt) public attempts;
+    // user -> itemId -> item state
+    mapping(address => mapping(uint256 => UserItem)) public userItems;
 
-    // VRF requestId => attemptId
+    // attemptId -> pending attempt
+    mapping(uint256 => EnhancementAttempt) public attempts;
+
+    // vrfRequestId -> attemptId
     mapping(uint256 => uint256) public attemptIdByVrfRequestId;
 
-    // user => itemId => pending attemptId
+    // user -> itemId -> pending attemptId
     mapping(address => mapping(uint256 => uint256)) public pendingAttemptOfItem;
+
+    // enhancementType -> level -> successRateBps
+    mapping(uint8 => mapping(uint8 => uint16)) public successRates;
 
     event EnhancementRequested(
         uint256 indexed attemptId,
@@ -87,29 +95,24 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
     {
         subscriptionId = _subscriptionId;
 
-        for (uint8 enhancementType = 0; enhancementType < 3; enhancementType++) {
-            successRates[enhancementType][0] = 9000; // 90%
-            successRates[enhancementType][1] = 7000; // 70%
-            successRates[enhancementType][2] = 5000; // 50%
-            successRates[enhancementType][3] = 3000; // 30%
-            successRates[enhancementType][4] = 1000; // 10%
-        }
-    }
-
-    function enhance(uint256 itemId, uint8 enhancementType) external {
-        requestEnhancement(itemId, enhancementType);
+        // enhancementType 0 기본 강화 확률표
+        successRates[0][0] = 9000; // +0 -> +1, 90%
+        successRates[0][1] = 7000; // +1 -> +2, 70%
+        successRates[0][2] = 5000; // +2 -> +3, 50%
+        successRates[0][3] = 3000; // +3 -> +4, 30%
+        successRates[0][4] = 1000; // +4 -> +5, 10%
     }
 
     function requestEnhancement(
         uint256 itemId,
         uint8 enhancementType
-    ) public returns (uint256 attemptId, uint256 vrfRequestId) {
+    ) external returns (uint256 attemptId, uint256 vrfRequestId) {
         require(
             pendingAttemptOfItem[msg.sender][itemId] == 0,
             "Enhancement already pending"
         );
 
-        ItemState storage item = userItems[msg.sender][itemId];
+        UserItem storage item = userItems[msg.sender][itemId];
 
         uint8 beforeLevel = item.level;
         require(beforeLevel < MAX_LEVEL, "Already max level");
@@ -117,21 +120,33 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         uint16 successRateBps = successRates[enhancementType][beforeLevel];
         require(successRateBps > 0, "Invalid success rate");
 
-        attemptId = nextAttemptId++;
+        attemptId = ++nextAttemptId;
 
-        attempts[attemptId] = Attempt({
+        vrfRequestId = s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: KEY_HASH,
+                subId: subscriptionId,
+                requestConfirmations: requestConfirmations,
+                callbackGasLimit: callbackGasLimit,
+                numWords: numWords,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({
+                        nativePayment: nativePayment
+                    })
+                )
+            })
+        );
+
+        attempts[attemptId] = EnhancementAttempt({
             user: msg.sender,
             itemId: itemId,
             beforeLevel: beforeLevel,
             enhancementType: enhancementType,
             successRateBps: successRateBps,
-            vrfRequestId: 0,
-            state: AttemptState.Pending
+            vrfRequestId: vrfRequestId,
+            state: AttemptState.PendingRandom
         });
 
-        vrfRequestId = _requestRandomness(attemptId);
-
-        attempts[attemptId].vrfRequestId = vrfRequestId;
         attemptIdByVrfRequestId[vrfRequestId] = attemptId;
         pendingAttemptOfItem[msg.sender][itemId] = attemptId;
 
@@ -143,79 +158,49 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         );
     }
 
-    function _requestRandomness(uint256 attemptId) internal returns (uint256) {
-        attemptId;
-
-        return s_vrfCoordinator.requestRandomWords(
-            VRFV2PlusClient.RandomWordsRequest({
-                keyHash: KEY_HASH,
-                subId: subscriptionId,
-                requestConfirmations: requestConfirmations,
-                callbackGasLimit: callbackGasLimit,
-                numWords: numWords,
-                extraArgs: VRFV2PlusClient._argsToBytes(
-                    VRFV2PlusClient.ExtraArgsV1({nativePayment: nativePayment})
-                )
-            })
-        );
-    }
-
     function fulfillRandomWords(
-        uint256 randomnessRequestId,
+        uint256 vrfRequestId,
         uint256[] calldata randomWords
     ) internal override {
-        fulfillRandomness(randomnessRequestId, randomWords[0]);
-    }
+        uint256 attemptId = attemptIdByVrfRequestId[vrfRequestId];
+        EnhancementAttempt memory attempt = attempts[attemptId];
 
-    function fulfillRandomness(
-        uint256 randomnessRequestId,
-        uint256 randomValue
-    ) internal {
-        uint256 attemptId = attemptIdByVrfRequestId[randomnessRequestId];
-        require(attemptId != 0, "Invalid randomness request");
+        require(attempt.user != address(0), "Unknown VRF request");
+        require(
+            attempt.state == AttemptState.PendingRandom,
+            "Invalid attempt state"
+        );
 
-        _resolveEnhancement(attemptId, randomnessRequestId, randomValue);
-    }
+        uint256 randomValue = randomWords[0];
+        uint16 rollBps = uint16(randomValue % BPS_DENOMINATOR);
 
-    function _resolveEnhancement(
-        uint256 attemptId,
-        uint256 randomnessRequestId,
-        uint256 randomValue
-    ) internal {
-        Attempt storage attempt = attempts[attemptId];
-
-        require(attempt.state == AttemptState.Pending, "Already resolved");
-
-        attempt.state = AttemptState.Completed;
-
-        ItemState storage item = userItems[attempt.user][attempt.itemId];
-
-        uint256 roll = randomValue % RATE_DENOMINATOR;
-        bool success = roll < attempt.successRateBps;
+        bool success = rollBps < attempt.successRateBps;
 
         uint8 afterLevel = attempt.beforeLevel;
+        uint8 resultType = uint8(ResultType.Fail);
 
         if (success) {
             afterLevel = attempt.beforeLevel + 1;
-            item.level = afterLevel;
+            resultType = uint8(ResultType.Success);
         }
 
-        totalAttemptsOfItem[attempt.user][attempt.itemId] += 1;
-
-        delete attemptIdByVrfRequestId[randomnessRequestId];
-        delete pendingAttemptOfItem[attempt.user][attempt.itemId];
+        userItems[attempt.user][attempt.itemId].level = afterLevel;
 
         emit EnhancementResult(
             attemptId,
             attempt.user,
             attempt.itemId,
-            randomnessRequestId,
+            vrfRequestId,
             attempt.beforeLevel,
             afterLevel,
-            success ? 1 : 0,
+            resultType,
             attempt.successRateBps,
             randomValue
         );
+
+        delete attempts[attemptId];
+        delete attemptIdByVrfRequestId[vrfRequestId];
+        delete pendingAttemptOfItem[attempt.user][attempt.itemId];
     }
 
     function setSuccessRate(
@@ -224,7 +209,7 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         uint16 newSuccessRateBps
     ) external onlyOwner {
         require(level < MAX_LEVEL, "Invalid level");
-        require(newSuccessRateBps <= RATE_DENOMINATOR, "Rate too high");
+        require(newSuccessRateBps <= BPS_DENOMINATOR, "Invalid rate");
 
         uint16 oldSuccessRateBps = successRates[enhancementType][level];
         successRates[enhancementType][level] = newSuccessRateBps;
@@ -238,27 +223,6 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         );
     }
 
-    function updateProbability(
-        uint8 level,
-        uint16 newSuccessRateBps
-    ) external onlyOwner {
-        uint8 defaultEnhancementType = 0;
-
-        require(level < MAX_LEVEL, "Invalid level");
-        require(newSuccessRateBps <= RATE_DENOMINATOR, "Rate too high");
-
-        uint16 oldSuccessRateBps = successRates[defaultEnhancementType][level];
-        successRates[defaultEnhancementType][level] = newSuccessRateBps;
-
-        emit ProbabilityTableUpdated(
-            msg.sender,
-            level,
-            defaultEnhancementType,
-            oldSuccessRateBps,
-            newSuccessRateBps
-        );
-    }
-
     function setVrfConfig(
         uint32 _callbackGasLimit,
         uint16 _requestConfirmations,
@@ -267,14 +231,6 @@ contract EnhancementGame is VRFConsumerBaseV2Plus {
         callbackGasLimit = _callbackGasLimit;
         requestConfirmations = _requestConfirmations;
         nativePayment = _nativePayment;
-    }
-
-    function getUserItemState(
-        address user,
-        uint256 itemId
-    ) external view returns (uint8 level, uint256 totalAttempts) {
-        ItemState memory item = userItems[user][itemId];
-        return (item.level, totalAttemptsOfItem[user][itemId]);
     }
 
     function getItemLevel(
