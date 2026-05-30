@@ -2,11 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState } from 'react';
 import './styles/tokens.css';
 import './styles/global.css';
-import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
-import Records from './pages/Records';
-import Verify from './pages/Verify';
-import Game from './pages/Game';
+import { Landing, Dashboard, Game, Records, Verify } from './pages';
 
 export default function App() {
   const [address, setAddress] = useState(null);
