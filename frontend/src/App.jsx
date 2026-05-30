@@ -33,7 +33,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing address={address} onConnect={handleConnect} />} />
         <Route path="/game" element={<Placeholder name="Game" />} />
-        <Route path="/stats" element={<Placeholder name="Stats" />} />
+        <Route path="/dashboard" element={<Placeholder name="Dashboard" />} />
         <Route path="/records" element={<Placeholder name="Records" />} />
         <Route path="/verify" element={<Placeholder name="Verify" />} />
       </Routes>

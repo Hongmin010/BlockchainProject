@@ -19,10 +19,10 @@ export default function Header({ address = null, onConnect }) {
           게임
         </NavLink>
         <NavLink
-          to="/stats"
+          to="/dashboard"
           className={({ isActive }) => (isActive ? `${styles.link} ${styles.active}` : styles.link)}
         >
-          통계
+          대시보드
         </NavLink>
         <NavLink
           to="/records"

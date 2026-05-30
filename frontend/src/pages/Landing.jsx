@@ -40,7 +40,7 @@ export default function Landing({ address, onConnect }) {
                 게임 시작하기 →
               </Button>
             </Link>
-            <Link to="/stats">
+            <Link to="/dashboard">
               <Button variant="ghost" size="xl">
                 먼저 통계 보기
               </Button>
@@ -100,7 +100,7 @@ export default function Landing({ address, onConnect }) {
               지금까지 모든 강화 데이터를 통계 대시보드로 확인해보세요.
             </div>
           </div>
-          <Link to="/stats">
+          <Link to="/dashboard">
             <Button variant="secondary" size="lg">
               통계 보러 가기 →
             </Button>
