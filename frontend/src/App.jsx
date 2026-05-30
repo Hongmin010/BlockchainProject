@@ -6,12 +6,7 @@ import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Records from './pages/Records';
 import Verify from './pages/Verify';
-
-const Placeholder = ({ name }) => (
-  <div style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
-    {name} 페이지 — 개발 예정
-  </div>
-);
+import Game from './pages/Game';
 
 export default function App() {
   const [address, setAddress] = useState(null);
@@ -35,7 +30,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing address={address} onConnect={handleConnect} />} />
-        <Route path="/game" element={<Placeholder name="Game" />} />
+        <Route path="/game" element={<Game address={address} onConnect={handleConnect} />} />
         <Route
           path="/dashboard"
           element={<Dashboard address={address} onConnect={handleConnect} />}
