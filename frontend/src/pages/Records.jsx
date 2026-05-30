@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
-import { Header, Badge, TxHash, Button } from '../components';
+import { Link, useNavigate } from 'react-router-dom';
+import { Header, Badge, TxHash, Button, WalletModal } from '../components';
 import styles from './Records.module.css';
 
 // 임시로 하드코딩
@@ -20,7 +20,22 @@ const RECORDS = [
 ];
 
 export default function Records({ address, onConnect }) {
-  const short = address ? `${address.slice(0, 4)}…${address.slice(-4)}` : null;
+  const navigate = useNavigate();
+  // 지갑 미연결 시 WalletModal 표시
+  if (!address) {
+    return (
+      <>
+        <Header address={address} onConnect={onConnect} />
+        <WalletModal
+          title="내 기록을 보려면 지갑이 필요해요"
+          onConnect={onConnect}
+          onClose={() => navigate(-1)}
+        />
+      </>
+    );
+  }
+
+  const short = `${address.slice(0, 4)}…${address.slice(-4)}`;
 
   return (
     <div className={styles.page}>

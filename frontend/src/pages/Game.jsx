@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar, TxHash } from '../components';
 import { WalletModal } from '../components';
 import styles from './Game.module.css';
@@ -23,15 +23,29 @@ const RECENT = [
 const CAT_EMOJIS = ['🐱', '😺', '😸', '🙀', '😻'];
 
 export default function Game({ address, onConnect }) {
+  const navigate = useNavigate();
   const [level, setLevel] = useState(3);
   const [forging, setForging] = useState(false);
-  const [result, setResult] = useState(null); // 'success' | 'fail' | null
+  const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [showWalletModal, setShowWalletModal] = useState(false);
   const stageRef = useRef(null);
   const catRef = useRef(null);
 
   const currentProb = level < 5 ? (PROB_TABLE[level - 1]?.prob ?? 0) : 0;
+
+  // 지갑 미연결 시 WalletModal 표시
+  if (!address) {
+    return (
+      <>
+        <Header address={address} onConnect={onConnect} />
+        <WalletModal
+          title="게임을 하려면 지갑이 필요해요"
+          onConnect={onConnect}
+          onClose={() => navigate(-1)}
+        />
+      </>
+    );
+  }
 
   const spawnParticles = (success) => {
     const stage = stageRef.current;
@@ -50,10 +64,6 @@ export default function Game({ address, onConnect }) {
   };
 
   const handleForge = () => {
-    if (!address) {
-      setShowWalletModal(true);
-      return;
-    }
     if (forging || level >= 5) return;
 
     setForging(true);
@@ -239,16 +249,6 @@ export default function Game({ address, onConnect }) {
           </div>
         </div>
       </div>
-
-      {showWalletModal && (
-        <WalletModal
-          onConnect={() => {
-            onConnect?.();
-            setShowWalletModal(false);
-          }}
-          onClose={() => setShowWalletModal(false)}
-        />
-      )}
     </div>
   );
 }
