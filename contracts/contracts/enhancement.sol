@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./MerkleProof.sol";
+
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
 contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
+    using MerkleProof for bytes32[];
+
     uint16 private constant BPS_DENOMINATOR = 10_000;
     uint8 public constant MAX_LEVEL = 5;
 
@@ -21,6 +25,8 @@ contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
     uint16 public requestConfirmations = 3;
     uint32 public numWords = 1;
     bool public nativePayment = true;
+
+    bytes32 public merkleRoot;
 
     uint256 public nextAttemptId;
 
@@ -63,6 +69,9 @@ contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
     // enhancementType -> level -> successRateBps
     mapping(uint8 => mapping(uint8 => uint16)) public successRates;
 
+    // merkle leaf -> used
+    mapping(bytes32 => bool) public usedEnhancementLeaves;
+
     event EnhancementRequested(
         uint256 indexed attemptId,
         address indexed user,
@@ -90,6 +99,20 @@ contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
         uint16 newSuccessRateBps
     );
 
+    // MerkleRoot 업데이트시 이벤트
+    event MerkleRootUpdated(
+        bytes32 indexed oldRoot, 
+        bytes32 indexed newRoot
+    );
+
+    event EnhancementProofUsed(
+        bytes32 indexed leaf,
+        address indexed user,
+        uint256 indexed itemId,
+        uint8 enhancementType,
+        uint256 ticketId
+    );
+
     constructor(uint256 _subscriptionId)
         VRFConsumerBaseV2Plus(BASE_SEPOLIA_VRF_COORDINATOR)
     {
@@ -103,10 +126,59 @@ contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
         successRates[0][4] = 1000; // +4 -> +5, 10%
     }
 
+    // Markle proof 없이 강화 시도 (MerkleRoot가 설정되지 않았을 때만 작동)
     function requestEnhancement(
         uint256 itemId,
         uint8 enhancementType
     ) external returns (uint256 attemptId, uint256 vrfRequestId) {
+        require(merkleRoot == bytes32(0), "Merkle proof required");
+
+        return _requestEnhancement(itemId, enhancementType);
+    }
+
+
+    // Markle proof 제공하여 강화 시도
+    function requestEnhancementWithProof(
+        uint256 itemId,
+        uint8 enhancementType,
+        uint256 ticketId,
+        bytes32[] calldata proof
+    ) external returns (uint256 attemptId, uint256 vrfRequestId) {
+        bytes32 leaf = getEnhancementLeaf(
+            msg.sender,
+            itemId,
+            enhancementType,
+            ticketId
+        );
+
+        require(!usedEnhancementLeaves[leaf], "Merkle proof already used");
+        require(
+            isValidEnhancementProof(
+                msg.sender,
+                itemId,
+                enhancementType,
+                ticketId,
+                proof
+            ),
+            "Invalid Merkle proof"
+        );
+
+        usedEnhancementLeaves[leaf] = true;
+        emit EnhancementProofUsed(
+            leaf,
+            msg.sender,
+            itemId,
+            enhancementType,
+            ticketId
+        );
+
+        return _requestEnhancement(itemId, enhancementType);
+    }
+
+    function _requestEnhancement(
+        uint256 itemId,
+        uint8 enhancementType
+    ) internal returns (uint256 attemptId, uint256 vrfRequestId) {
         require(
             pendingAttemptOfItem[msg.sender][itemId] == 0,
             "Enhancement already pending"
@@ -156,6 +228,48 @@ contract EnhancementGameVRF is VRFConsumerBaseV2Plus {
             itemId,
             vrfRequestId
         );
+    }
+
+    // MerkleRoot 설정 함수
+    function setMerkleRoot(bytes32 newMerkleRoot) external onlyOwner {
+        bytes32 oldMerkleRoot = merkleRoot;
+        merkleRoot = newMerkleRoot;
+
+        emit MerkleRootUpdated(oldMerkleRoot, newMerkleRoot);
+    }
+
+    // Merkle proof 검증 함수
+    function isValidEnhancementProof(
+        address user,
+        uint256 itemId,
+        uint8 enhancementType,
+        uint256 ticketId,
+        bytes32[] calldata proof
+    ) public view returns (bool) {
+        if (merkleRoot == bytes32(0)) {
+            return true;
+        }
+
+        bytes32 leaf = getEnhancementLeaf(
+            user,
+            itemId,
+            enhancementType,
+            ticketId
+        );
+        if (usedEnhancementLeaves[leaf]) {
+            return false;
+        }
+
+        return proof.verify(merkleRoot, leaf);
+    }
+
+    function getEnhancementLeaf(
+        address user,
+        uint256 itemId,
+        uint8 enhancementType,
+        uint256 ticketId
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encode(user, itemId, enhancementType, ticketId));
     }
 
     function fulfillRandomWords(
