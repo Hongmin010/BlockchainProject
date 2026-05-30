@@ -3,6 +3,7 @@ import { useState } from 'react';
 import './styles/tokens.css';
 import './styles/global.css';
 import Landing from './pages/Landing';
+import Dashboard from './pages/Dashboard';
 
 const Placeholder = ({ name }) => (
   <div style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
@@ -33,7 +34,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing address={address} onConnect={handleConnect} />} />
         <Route path="/game" element={<Placeholder name="Game" />} />
-        <Route path="/dashboard" element={<Placeholder name="Dashboard" />} />
+        <Route
+          path="/dashboard"
+          element={<Dashboard address={address} onConnect={handleConnect} />}
+        />
         <Route path="/records" element={<Placeholder name="Records" />} />
         <Route path="/verify" element={<Placeholder name="Verify" />} />
       </Routes>
