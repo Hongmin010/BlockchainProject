@@ -2,11 +2,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState } from 'react';
 import './styles/tokens.css';
 import './styles/global.css';
+import Landing from './pages/Landing';
 
 const Placeholder = ({ name }) => (
-  <div
-    style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}
-  >
+  <div style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
     {name} 페이지 — 개발 예정
   </div>
 );
@@ -32,7 +31,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Placeholder name="Landing" />} />
+        <Route path="/" element={<Landing address={address} onConnect={handleConnect} />} />
         <Route path="/game" element={<Placeholder name="Game" />} />
         <Route path="/stats" element={<Placeholder name="Stats" />} />
         <Route path="/records" element={<Placeholder name="Records" />} />
