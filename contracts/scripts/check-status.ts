@@ -1,6 +1,16 @@
 import { network } from "hardhat";
+import { readFileSync } from "node:fs";
 
-const CONTRACT_ADDRESS = "0xd9f2e53cad519668d02ecc0dbdd49b42938e9ab2";
+function getContractAddress() {
+  const deployedAddresses = JSON.parse(
+    readFileSync(
+      "ignition/deployments/chain-84532/deployed_addresses.json",
+      "utf8"
+    )
+  );
+
+  return deployedAddresses["EnhancementGameVRFModule#EnhancementGameVRF"];
+}
 
 async function main() {
   const { ethers } = await network.connect();
@@ -9,7 +19,7 @@ async function main() {
 
   const game = await ethers.getContractAt(
     "EnhancementGameVRF",
-    CONTRACT_ADDRESS,
+    getContractAddress(),
     signer
   );
 

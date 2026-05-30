@@ -55,3 +55,17 @@ After setting the variable, you can run the deployment with the Sepolia network:
 ```shell
 npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
 ```
+
+# 배포 명령어 정리
+
+## 배포 명령어
+`npm run deploy:base-sepolia`
+
+## 배포된 주소 확인
+`npm run address:base-sepolia`
+
+## 테스트용 강화 요청
+`npm run request:base-sepolia`
+
+## 상태 확인
+`npm run status:base-sepolia`
