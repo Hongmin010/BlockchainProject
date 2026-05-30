@@ -59,13 +59,21 @@ npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
 # 배포 명령어 정리
 
 ## 배포 명령어
-`npm run deploy:base-sepolia`
+```shell
+npm run deploy:base-sepolia
+```
 
 ## 배포된 주소 확인
-`npm run address:base-sepolia`
+```shell
+npm run address:base-sepolia
+```
 
 ## 테스트용 강화 요청
-`npm run request:base-sepolia`
+```shell
+npm run request:base-sepolia
+```
 
 ## 상태 확인
-`npm run status:base-sepolia`
+```shell
+npm run status:base-sepolia
+```
