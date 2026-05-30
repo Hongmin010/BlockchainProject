@@ -7,8 +7,8 @@ export default function Header({ address = null, onConnect }) {
   return (
     <header className={styles.header}>
       <NavLink to="/" className={styles.logo}>
-        <span className={styles.mark}>🐱</span> // 로고 이미지 이모지로 임시 대체
-        <span>CatForge</span>
+        {/* 로고 이미지 아직 없음 - 고양이 이모지로 임시 대체 */}
+        <span className={styles.mark}>🐱</span> <span>CatForge</span>
       </NavLink>
 
       <nav className={styles.nav}>
