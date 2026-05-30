@@ -1,0 +1,16 @@
+.tx {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--link);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(126, 180, 255, 0.4);
+  padding-bottom: 1px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.tx:hover {
+  color: #aacaff;
+  border-color: var(--link);
+}

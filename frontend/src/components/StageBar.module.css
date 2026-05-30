@@ -1,0 +1,44 @@
+.stages {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pip {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  flex-shrink: 0;
+  transition: box-shadow 0.2s;
+}
+
+/* 완료된 단계 */
+.done {
+  background: linear-gradient(180deg, var(--ember-500), var(--ember-600));
+  border-color: var(--ember-700);
+  color: #fff;
+  box-shadow:
+    0 0 12px rgba(255, 122, 26, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+/* 다음 도달 가능한 단계 */
+.next {
+  border: 1px dashed var(--ember-500);
+  color: var(--ember-300);
+  background: rgba(255, 122, 26, 0.08);
+}
+
+/* 잠긴 단계 */
+.locked {
+  color: var(--ink-4);
+}

@@ -1,0 +1,16 @@
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  position: relative;
+}
+
+.warm {
+  background: linear-gradient(180deg, rgba(255, 168, 95, 0.04), transparent 30%), var(--bg-2);
+  border-color: var(--bg-4);
+}
+
+.elevated {
+  box-shadow: var(--shadow-elevate);
+}
