@@ -4,6 +4,7 @@ import './styles/tokens.css';
 import './styles/global.css';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
+import Records from './pages/Records';
 
 const Placeholder = ({ name }) => (
   <div style={{ padding: 40, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
@@ -38,7 +39,7 @@ export default function App() {
           path="/dashboard"
           element={<Dashboard address={address} onConnect={handleConnect} />}
         />
-        <Route path="/records" element={<Placeholder name="Records" />} />
+        <Route path="/records" element={<Records address={address} onConnect={handleConnect} />} />
         <Route path="/verify" element={<Placeholder name="Verify" />} />
       </Routes>
     </BrowserRouter>
