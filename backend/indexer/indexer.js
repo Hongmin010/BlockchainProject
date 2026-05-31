@@ -6,7 +6,7 @@
  *  목적
  *  ----
  *  Base Sepolia 의 `EnhancementGameVRF` 컨트랙트
- *  (`0xd9f2e53cad519668d02ecc0dbdd49b42938e9ab2`) 가 emit 하는
+ *  (`0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59`) 가 emit 하는
  *  3종 이벤트를 폴링하여 PostgreSQL DB(`db/schema.sql`) 에 영속화한다.
  *
  *  V2 → V3 변경 (배포본 일치화)

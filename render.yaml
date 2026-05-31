@@ -1,0 +1,73 @@
+# ============================================================
+#  Render Blueprint (Infrastructure as Code)
+#  ------------------------------------------------------------
+#  KHU 블록체인 프로젝트 — 백엔드 API (Express)
+#
+#  사용법
+#  ------
+#   1) Render 대시보드 → New → Blueprint → 이 저장소 연결
+#   2) Render 가 render.yaml 을 읽어 서비스를 생성
+#   3) sync:false 로 표시된 시크릿(RPC_URL/CONTRACT_ADDRESS/DATABASE_URL)은
+#      대시보드에서 직접 입력 (저장소에 커밋되지 않음)
+#
+#  주의
+#  ----
+#   - 인덱서(indexer.js)는 이 Blueprint 에 포함하지 않음.
+#     현재 로컬 실행 정책. 추후 Background Worker($7/월)로 옮길 때
+#     아래 주석 처리된 worker 블록을 활성화.
+#   - PORT 는 Render 가 런타임에 자동 주입 → 직접 설정하지 않는다
+#     (server.js 가 process.env.PORT 사용).
+# ============================================================
+
+services:
+  - type: web
+    name: khu-blockchain-api
+    runtime: node
+    plan: free
+    region: singapore        # Render 가용 리전 중 한국에 가장 가까움 (Supabase 는 서울)
+    branch: main
+    rootDir: backend          # 저장소 하위 backend/ 가 실제 Node 프로젝트
+    buildCommand: npm install
+    startCommand: npm start    # = node api/server.js
+    healthCheckPath: /health   # 주의: /health 는 DB ping 포함 → DB(Supabase) 가 깨어 있어야 200.
+                               #       Supabase 일시정지 상태에서 배포하면 헬스체크가 503 으로 실패할 수 있음.
+    autoDeploy: true           # main 브랜치 push 시 자동 재배포
+    envVars:
+      # ----- 시크릿 (대시보드에서 직접 입력, 커밋 안 함) -----
+      - key: RPC_URL
+        sync: false            # Base Sepolia RPC 엔드포인트
+      - key: CONTRACT_ADDRESS
+        sync: false            # 0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59
+      - key: DATABASE_URL
+        sync: false            # Supabase Transaction Pooler (포트 6543) 연결 문자열
+      # ----- 일반 설정 -----
+      - key: DATABASE_SSL
+        value: "true"          # Supabase 연결은 TLS 필수 (pool.js 가 자동 감지하지만 명시)
+
+# ------------------------------------------------------------
+#  (추후) 인덱서를 클라우드로 옮길 때 활성화할 Background Worker
+# ------------------------------------------------------------
+#  - type: worker
+#    name: khu-blockchain-indexer
+#    runtime: node
+#    plan: starter            # Worker 는 무료 플랜 없음 (~$7/월)
+#    region: singapore
+#    branch: main
+#    rootDir: backend
+#    buildCommand: npm install
+#    startCommand: npm run indexer
+#    envVars:
+#      - key: RPC_URL
+#        sync: false
+#      - key: CONTRACT_ADDRESS
+#        sync: false
+#      - key: DATABASE_URL
+#        sync: false           # 인덱서는 트랜잭션 사용 → Session Pooler(5432) 권장
+#      - key: DATABASE_SSL
+#        value: "true"
+#      - key: POLL_INTERVAL_MS
+#        value: "12000"
+#      - key: BATCH_SIZE
+#        value: "1000"
+#      - key: CONFIRMATION_BLOCKS
+#        value: "5"
