@@ -108,7 +108,7 @@ base URL — 로컬 `http://localhost:3000`, 클라우드 `https://<render-servi
 | `GET /api/stats/global` | 전체 누적 통계 | Dashboard |
 | `GET /api/stats/by-level` ★ | 단계별 표기 vs 실측 + 통계 검정 | Dashboard |
 | `GET /api/stats/user/:address` | 사용자 시도 통계 + 보유 아이템 | Records |
-| `GET /api/attempts/recent` | 최근 시도 목록 | Dashboard / Records |
+| `GET /api/attempts/recent` `[?user=<addr>]` | 최근 시도 목록 (user 지정 시 해당 유저만 — "내 기록"용) | Dashboard / Records |
 | `GET /api/attempts/:attemptId` ★ | 시도 1건 상세 + VRF 재검증 | Verify |
 | `GET /api/probability/history?level=<n>` ★ | 확률표 변경 이력 | Dashboard |
 

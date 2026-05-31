@@ -213,20 +213,45 @@ app.get('/api/stats/user/:address', async (req, res, next) => {
 //  /api/attempts/* — 시도 조회 + VRF 재검증 (차별화 #2)
 // ============================================================
 
-/** GET /api/attempts/recent — 최근 시도 목록 (limit=20 default, max=100) */
+/**
+ * GET /api/attempts/recent — 최근 시도 목록 (limit=20 default, max=100)
+ *
+ *  쿼리: ?user=<address>  (선택) — 특정 유저의 시도만 필터.
+ *        대시보드는 user 없이 전체, "내 기록" 페이지는 ?user=<지갑주소>로 호출.
+ */
 app.get('/api/attempts/recent', async (req, res, next) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+
+  // ?user 가 오면 주소 검증. 빈 값/오타 주소는 400 (전체로 조용히 넘어가지 않음).
+  let user = null;
+  if (req.query.user !== undefined) {
+    user = normalizeAddress(req.query.user);
+    if (!user) {
+      return res.status(400).json({
+        error: 'invalid_address',
+        message: 'user must match /^0x[a-fA-F0-9]{40}$/',
+      });
+    }
+  }
+
   try {
+    const params = [limit];
+    let whereClause = '';
+    if (user) {
+      params.push(user);
+      whereClause = 'WHERE user_address = $2';
+    }
     const { rows } = await db.query(`
       SELECT attempt_id, user_address, item_id, before_level, after_level,
              claimed_success_rate, success, vrf_request_id, random_value,
              status, requested_at, completed_at,
              requested_tx_hash, completed_tx_hash
         FROM attempts
+       ${whereClause}
        ORDER BY requested_at DESC
        LIMIT $1
-    `, [limit]);
-    res.json({ limit, attempts: rows.map(formatAttempt) });
+    `, params);
+    res.json({ limit, user, attempts: rows.map(formatAttempt) });
   } catch (err) {
     next(err);
   }
