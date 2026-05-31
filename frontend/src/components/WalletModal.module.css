@@ -1,0 +1,95 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(20, 16, 12, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-elevate);
+  padding: 32px;
+  width: 440px;
+  position: relative;
+}
+
+.icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 168, 95, 0.2), rgba(255, 122, 26, 0.05));
+  border: 1px solid rgba(255, 122, 26, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 20px rgba(255, 122, 26, 0.2);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 8px;
+}
+
+.desc {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+/* ── 지갑 버튼 ── */
+.btnList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.walletBtn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.walletBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 122, 26, 0.45);
+}
+
+.walletBtnIcon {
+  font-size: 20px;
+}
+
+.walletBtnArrow {
+  margin-left: auto;
+  opacity: 0.8;
+}
+
+/* ── 나중에 하기 ── */
+.later {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.laterBtn {
+  font-size: 13px;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: var(--font);
+  transition: color 0.15s;
+}
+
+.laterBtn:hover {
+  color: var(--ink-2);
+}

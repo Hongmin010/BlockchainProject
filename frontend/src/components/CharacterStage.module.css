@@ -1,0 +1,59 @@
+.stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 60%, rgba(255, 168, 95, 0.18), transparent 70%),
+    linear-gradient(180deg, #2a2118 0%, #1a140e 100%);
+  border: 1px solid var(--bg-4);
+  box-shadow:
+    0 1px 0 rgba(255, 222, 178, 0.06) inset,
+    0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* 체커 패턴 */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.015) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.015) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.015) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.015) 75%);
+  background-size: 24px 24px;
+  background-position:
+    0 0,
+    0 12px,
+    12px -12px,
+    -12px 0;
+  pointer-events: none;
+}
+
+/* 레벨 배지 */
+.badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  background: rgba(20, 16, 12, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--bg-4);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ember-300);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badgeLabel {
+  color: var(--ink-3);
+  font-size: 10px;
+}

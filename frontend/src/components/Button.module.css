@@ -1,0 +1,103 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  font-family: var(--font);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    opacity 0.12s;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ── Variants ── */
+.primary {
+  background: linear-gradient(180deg, var(--ember-500), var(--ember-600));
+  color: #fff;
+  border-color: var(--ember-700);
+  box-shadow:
+    0 6px 18px rgba(255, 122, 26, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+.primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 8px 24px rgba(255, 122, 26, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.25) inset;
+}
+
+.secondary {
+  background: var(--bg-2);
+  color: var(--ink-1);
+  border-color: var(--bg-4);
+}
+.secondary:not(:disabled):hover {
+  background: var(--bg-3);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border-color: var(--bg-4);
+}
+.ghost:not(:disabled):hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+}
+
+/* ── 크기 ── */
+.sm {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+.md {
+  padding: 12px 20px;
+  font-size: 14px;
+  border-radius: 12px;
+}
+.lg {
+  padding: 16px 28px;
+  font-size: 16px;
+  border-radius: 14px;
+}
+.xl {
+  padding: 20px 36px;
+  font-size: 18px;
+  border-radius: 16px;
+}
+
+/* ── 로딩 상태 ── */
+.loading {
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

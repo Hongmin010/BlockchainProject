@@ -1,0 +1,36 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--bg-4);
+  background: var(--bg-2);
+  color: var(--ink-2);
+}
+
+/* 성공 */
+.success {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: rgba(95, 195, 122, 0.3);
+}
+
+/* 실패 */
+.fail {
+  color: var(--fail);
+  background: var(--fail-bg);
+  border-color: rgba(232, 98, 60, 0.3);
+}
+
+.dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: currentColor;
+  flex-shrink: 0;
+}
