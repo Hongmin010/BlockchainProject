@@ -1,27 +1,38 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Header, Badge, TxHash, Button, WalletModal } from '../components';
+import { fetchUserStats, fetchRecentAttempts, bpToPercent, formatDateTime } from '../api/api';
 import styles from './Records.module.css';
 
-// 임시로 하드코딩
-const SUMMARY = [
-  { label: '총 시도', value: '128', sub: 'lifetime', icon: '⚒', tone: null },
-  { label: '성공', value: '71', sub: '55.4%', icon: '✓', tone: 'success' },
-  { label: '실패', value: '57', sub: '44.6%', icon: '✕', tone: 'fail' },
-];
-
-const RECORDS = [
-  { tx: '0x9f2a…b14e', stage: 'Lv.4 → Lv.5', result: 'S', time: '2026-05-06 14:21' },
-  { tx: '0x771c…0a2d', stage: 'Lv.5 → Lv.6', result: 'F', time: '2026-05-06 14:08' },
-  { tx: '0x4400…ee91', stage: 'Lv.5 → Lv.6', result: 'F', time: '2026-05-05 22:14' },
-  { tx: '0xab12…7765', stage: 'Lv.4 → Lv.5', result: 'S', time: '2026-05-05 21:55' },
-  { tx: '0x0e88…d04c', stage: 'Lv.3 → Lv.4', result: 'S', time: '2026-05-05 19:30' },
-  { tx: '0x66a1…3320', stage: 'Lv.4 → Lv.5', result: 'F', time: '2026-05-04 09:11' },
-  { tx: '0xc012…aa90', stage: 'Lv.3 → Lv.4', result: 'S', time: '2026-05-03 18:42' },
-];
+const PAGE_SIZE = 7;
 
 export default function Records({ address, onConnect }) {
   const navigate = useNavigate();
-  // 지갑 미연결 시 WalletModal 표시
+
+  const [userStats, setUserStats] = useState(null);
+  const [attempts, setAttempts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (!address) return;
+
+    Promise.all([fetchUserStats(address), fetchRecentAttempts(100, address)])
+      .then(([stats, recent]) => {
+        setPage(1);
+        setUserStats(stats);
+        setAttempts(recent.attempts ?? []);
+        setLoading(false);
+        setError(null);
+      })
+      .catch((err) => {
+        setLoading(false);
+        setError(err.message);
+      });
+  }, [address]);
+
+  // 지갑 미연결
   if (!address) {
     return (
       <>
@@ -37,8 +48,37 @@ export default function Records({ address, onConnect }) {
 
   const short = `${address.slice(0, 4)}…${address.slice(-4)}`;
 
+  // ── 요약 카드 데이터 ─────────────────────────────────────────
+  const totalAttempts = userStats?.completedAttempts ?? 0;
+  const successes = userStats?.successes ?? 0;
+  const fails = totalAttempts - successes;
+  const successPct = totalAttempts > 0 ? bpToPercent(userStats.observedRateBp) : '0.00';
+  const failPct = totalAttempts > 0 ? (100 - parseFloat(successPct)).toFixed(2) : '0.00';
+
+  const summaryCards = [
+    {
+      label: '총 시도',
+      value: totalAttempts.toLocaleString(),
+      sub: 'lifetime',
+      icon: '⚒',
+      tone: null,
+    },
+    {
+      label: '성공',
+      value: successes.toLocaleString(),
+      sub: `${successPct}%`,
+      icon: '✓',
+      tone: 'success',
+    },
+    { label: '실패', value: fails.toLocaleString(), sub: `${failPct}%`, icon: '✕', tone: 'fail' },
+  ];
+
+  // ── 페이지네이션 ─────────────────────────────────────────────
+  const totalPages = Math.max(1, Math.ceil(attempts.length / PAGE_SIZE));
+  const paged = attempts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
-    <div className="cf-page">
+    <div className={styles.page}>
       <Header address={address} onConnect={onConnect} />
 
       <div className={styles.inner}>
@@ -46,15 +86,7 @@ export default function Records({ address, onConnect }) {
           <div>
             <h1 className={styles.title}>내 강화 기록</h1>
             <span className="cf-cap">
-              {short ? (
-                <>
-                  <span style={{ color: 'var(--success)' }}>●</span> connected · {short}
-                </>
-              ) : (
-                <>
-                  <span style={{ color: 'var(--ink-4)' }}>●</span> 지갑 미연결
-                </>
-              )}
+              <span style={{ color: 'var(--success)' }}>●</span> connected · {short}
             </span>
           </div>
           <div className={styles.titleActions}>
@@ -67,41 +99,48 @@ export default function Records({ address, onConnect }) {
           </div>
         </div>
 
-        {/* ── 요약 카드 ── */}
-        <div className={styles.summaryGrid}>
-          {SUMMARY.map(({ label, value, sub, icon, tone }) => (
-            <div key={label} className={styles.summaryCard}>
-              <div
-                className={styles.summaryIcon}
-                style={{
-                  color:
-                    tone === 'success'
-                      ? 'var(--success)'
-                      : tone === 'fail'
-                        ? 'var(--fail)'
-                        : 'var(--ember-300)',
-                }}
-              >
-                {icon}
+        {/* 에러 */}
+        {error && (
+          <div style={{ color: 'var(--fail)', fontSize: 14, marginBottom: 16 }}>⚠ {error}</div>
+        )}
+
+        {/* 요약 카드 — 에러 없을 때만 표시 */}
+        {!error && (
+          <div className={styles.summaryGrid}>
+            {summaryCards.map(({ label, value, sub, icon, tone }) => (
+              <div key={label} className={styles.summaryCard}>
+                <div
+                  className={styles.summaryIcon}
+                  style={{
+                    color:
+                      tone === 'success'
+                        ? 'var(--success)'
+                        : tone === 'fail'
+                          ? 'var(--fail)'
+                          : 'var(--ember-300)',
+                  }}
+                >
+                  {icon}
+                </div>
+                <div className="cf-cap">{label}</div>
+                <div
+                  className={styles.summaryValue}
+                  style={{
+                    color:
+                      tone === 'success'
+                        ? 'var(--success)'
+                        : tone === 'fail'
+                          ? 'var(--fail)'
+                          : 'var(--ink-1)',
+                  }}
+                >
+                  {value}
+                </div>
+                <div className={styles.summarySub}>{sub}</div>
               </div>
-              <div className="cf-cap">{label}</div>
-              <div
-                className={styles.summaryValue}
-                style={{
-                  color:
-                    tone === 'success'
-                      ? 'var(--success)'
-                      : tone === 'fail'
-                        ? 'var(--fail)'
-                        : 'var(--ink-1)',
-                }}
-              >
-                {value}
-              </div>
-              <div className={styles.summarySub}>{sub}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* ── 테이블 ── */}
         <div className={styles.tableWrap}>
@@ -116,39 +155,82 @@ export default function Records({ address, onConnect }) {
               </tr>
             </thead>
             <tbody>
-              {RECORDS.map(({ tx, stage, result, time }) => (
-                <tr key={tx}>
-                  <td>
-                    <TxHash hash={tx} shorten={false} />
-                  </td>
-                  <td className={styles.monoCell}>{stage}</td>
-                  <td>
-                    <Badge variant={result === 'S' ? 'success' : 'fail'} dot>
-                      {result === 'S' ? '성공' : '실패'}
-                    </Badge>
-                  </td>
-                  <td className={styles.timeCell}>{time}</td>
-                  <td className={styles.actionCell}>
-                    <Link to="/verify" className={styles.verifyLink}>
-                      검증 →
-                    </Link>
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{ textAlign: 'center', padding: '40px 0', color: 'var(--ink-3)' }}
+                  >
+                    불러오는 중…
                   </td>
                 </tr>
-              ))}
+              )}
+              {!loading && paged.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{ textAlign: 'center', padding: '40px 0', color: 'var(--ink-3)' }}
+                  >
+                    강화 기록이 없습니다.
+                  </td>
+                </tr>
+              )}
+              {!loading &&
+                paged.map((a) => (
+                  <tr key={a.attemptId}>
+                    <td>
+                      <TxHash hash={a.requestedTxHash} shorten={false} />
+                    </td>
+                    <td className={styles.monoCell}>
+                      Lv.{a.beforeLevel} → Lv.{a.afterLevel ?? a.beforeLevel}
+                    </td>
+                    <td>
+                      <Badge variant={a.success ? 'success' : 'fail'} dot>
+                        {a.success ? '성공' : '실패'}
+                      </Badge>
+                    </td>
+                    <td className={styles.timeCell}>{formatDateTime(a.requestedAt)}</td>
+                    <td className={styles.actionCell}>
+                      <Link to={`/verify?id=${a.attemptId}`} className={styles.verifyLink}>
+                        검증 →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
 
-          {/* 페이지네이션 - 임시로 하드코딩 */}
+          {/* 페이지네이션 */}
           <div className={styles.pagination}>
-            <span className="cf-cap">128 records · showing 1–7</span>
+            <span className="cf-cap">
+              {attempts.length} records · showing{' '}
+              {Math.min((page - 1) * PAGE_SIZE + 1, attempts.length)}–
+              {Math.min(page * PAGE_SIZE, attempts.length)}
+            </span>
             <div className={styles.pages}>
-              <button className={styles.pageBtn}>‹</button>
-              <button className={`${styles.pageBtn} ${styles.active}`}>1</button>
-              <button className={styles.pageBtn}>2</button>
-              <button className={styles.pageBtn}>3</button>
-              <span className={styles.pageDot}>…</span>
-              <button className={styles.pageBtn}>19</button>
-              <button className={styles.pageBtn}>›</button>
+              <button
+                className={styles.pageBtn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                ‹
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  className={`${styles.pageBtn} ${p === page ? styles.active : ''}`}
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                className={styles.pageBtn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                ›
+              </button>
             </div>
           </div>
         </div>
