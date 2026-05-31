@@ -90,7 +90,7 @@ app.get('/health', async (_req, res) => {
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'ok' : 'degraded',
     service: 'khu-blockchain-backend',
-    version: '2.0',
+    version: '3.0',
     db: dbOk,
     dbError,
     timestamp: new Date().toISOString(),
@@ -371,7 +371,7 @@ app.use((err, _req, res, _next) => {
 // ------------------------------------------------------------
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`[api] 서버 부팅 완료 (v2.0): http://localhost:${PORT}`);
+    console.log(`[api] 서버 부팅 완료 (v3.0): http://localhost:${PORT}`);
   });
 }
 

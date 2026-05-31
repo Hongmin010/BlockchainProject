@@ -1,7 +1,7 @@
 # 컨트랙트 이벤트 명세 (v3 — 배포본 일치화)
 
 > 본 문서는 **Base Sepolia 에 배포된 `EnhancementGameVRF`**
-> (`0xd9f2e53cad519668d02ecc0dbdd49b42938e9ab2`) 의 이벤트 시그니처를
+> (`0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59`) 의 이벤트 시그니처를
 > ground truth 로 한다.
 > 인덱서(`indexer/indexer.js`) 는 이 명세에 따라 이벤트를 디코딩하여
 > DB(`db/schema.sql`) 에 저장한다.

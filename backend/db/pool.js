@@ -26,10 +26,28 @@ let pool;
 
 function getPool() {
   if (!pool) {
-    if (!process.env.DATABASE_URL) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
       throw new Error('DATABASE_URL not set — check backend/.env');
     }
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+    // SSL 분기
+    // ---------
+    //  - 로컬 PostgreSQL: SSL 없이 평문 TCP → ssl:false
+    //  - Supabase(클라우드): TLS 강제 + 자체 CA 체인 → ssl 미설정 시
+    //    'self-signed certificate in certificate chain' 에러로 연결이 막힌다.
+    //  관리형 DB(Supabase) 호스트이거나 URL 에 sslmode=require 가 있으면 SSL 사용.
+    //  rejectUnauthorized:false 는 CA 검증을 건너뛴다(데모/학습용으로 충분).
+    //  강제로 켜고 끄려면 DATABASE_SSL=true / false 환경변수로 오버라이드.
+    const needSsl =
+      process.env.DATABASE_SSL === 'true' ||
+      (process.env.DATABASE_SSL !== 'false' &&
+        /supabase\.(com|co)|sslmode=require/i.test(connectionString));
+
+    pool = new Pool({
+      connectionString,
+      ssl: needSsl ? { rejectUnauthorized: false } : false,
+    });
     pool.on('error', (err) => {
       // idle client 의 비동기 에러는 process crash 시키지 않도록 캡처만.
       console.error('[db] idle client error:', err);

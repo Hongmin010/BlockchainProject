@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>온체인 고양이 강화 — 데모 (참고용 예시)</title>
+
+  <!--
+    ============================================================
+     이 파일은 프론트엔드 팀을 위한 참고용 예시입니다.
+     - 단일 HTML, 빌드 도구 없음, CDN만 사용
+     - 백엔드 V2 명세 (docs/events.md, db/schema.sql) 와
+       이벤트명·API 응답 형식을 일치시켰음
+     - 컨트랙트 함수 시그니처는 미합의 — 가정값이며
+       실제 합의 후 ABI_FRAGMENT 부분만 교체하면 됨
+    ============================================================
+  -->
+
+  <style>
+    /* ============================================================
+       0. 디자인 시스템 (CSS 변수)
+       ============================================================ */
+    :root {
+      --bg: #0f1115;
+      --bg-elev: #1a1d24;
+      --bg-elev-2: #232732;
+      --border: #2c313d;
+      --text: #e6e9ef;
+      --text-dim: #8b94a7;
+      --accent: #7c5cff;
+      --accent-hover: #9277ff;
+      --success: #4ade80;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --pending: #38bdf8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ============================================================
+       1. 레이아웃
+       ============================================================ */
+    .app {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 24px;
+      min-height: 100vh;
+    }
+
+    header.topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .brand { font-size: 20px; font-weight: 700; }
+    .brand .accent { color: var(--accent); }
+    .brand .badge {
+      margin-left: 8px;
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--bg-elev-2);
+      color: var(--text-dim);
+      border-radius: 999px;
+      font-weight: 500;
+    }
+
+    main.layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+    }
+
+    .panel {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .panel h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* ============================================================
+       2. 지갑 연결 UI
+       ============================================================ */
+    .wallet {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .net-pill {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg-elev-2);
+      color: var(--text-dim);
+    }
+    .net-pill.ok { color: var(--success); }
+    .net-pill.bad { color: var(--danger); }
+
+    .btn {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 14px;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+    }
+    .btn.ghost:hover:not(:disabled) { background: var(--bg-elev-2); }
+
+    .addr {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 13px;
+      padding: 8px 12px;
+      background: var(--bg-elev-2);
+      border-radius: 8px;
+      color: var(--text-dim);
+    }
+
+    /* ============================================================
+       3. 게임 영역
+       ============================================================ */
+    .game {
+      display: grid;
+      grid-template-rows: auto auto auto auto;
+      gap: 24px;
+    }
+
+    .cat-stage {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 32px;
+      background: radial-gradient(circle at center, #2a2f3d 0%, var(--bg-elev) 60%);
+      border-radius: 12px;
+      min-height: 320px;
+      position: relative;
+    }
+
+    .cat-stage svg {
+      width: 240px;
+      height: 240px;
+      transition: transform 0.4s ease-out;
+    }
+
+    .cat-stage.success svg { animation: bounce 0.5s ease-out; }
+    .cat-stage.fail svg    { animation: shake 0.5s ease-out; }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      30%      { transform: translateY(-30px) scale(1.05); }
+      60%      { transform: translateY(0)     scale(0.98); }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25%      { transform: translateX(-10px) rotate(-3deg); }
+      75%      { transform: translateX(10px)  rotate(3deg); }
+    }
+
+    .result-overlay {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .result-overlay.show { opacity: 1; }
+    .result-overlay.success { background: var(--success); color: #0f1115; }
+    .result-overlay.fail    { background: var(--danger);  color: white; }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .info-card {
+      padding: 16px;
+      background: var(--bg-elev-2);
+      border-radius: 8px;
+      text-align: center;
+    }
+    .info-card .label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .info-card .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .info-card .sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .enhance-btn {
+      width: 100%;
+      padding: 18px;
+      font-size: 16px;
+    }
+
+    /* ============================================================
+       4. 트랜잭션 상태
+       ============================================================ */
+    .tx-status {
+      padding: 16px;
+      border-radius: 8px;
+      background: var(--bg-elev-2);
+      font-size: 13px;
+      display: none;
+    }
+    .tx-status.show { display: block; }
+
+    .tx-status .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .tx-status .row:last-child { margin-bottom: 0; }
+
+    .tx-state {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tx-state.idle      { background: var(--bg-elev); color: var(--text-dim); }
+    .tx-state.pending   { background: var(--pending); color: #0f1115; }
+    .tx-state.mining    { background: var(--warning); color: #0f1115; }
+    .tx-state.waiting   { background: var(--pending); color: #0f1115; }
+    .tx-state.confirmed { background: var(--success); color: #0f1115; }
+    .tx-state.failed    { background: var(--danger);  color: white; }
+
+    .tx-status a {
+      color: var(--accent);
+      text-decoration: none;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+    }
+    .tx-status a:hover { text-decoration: underline; }
+
+    /* ============================================================
+       5. 통계 패널
+       ============================================================ */
+    .stats {
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: 36px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-row:last-child { border-bottom: none; }
+    .stats-level {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+    .stats-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stats-bar .compare {
+      display: flex;
+      gap: 2px;
+      height: 8px;
+    }
+    .stats-bar .compare > div { border-radius: 2px; }
+    .stats-bar .declared { background: var(--text-dim); }
+    .stats-bar .observed { background: var(--accent); }
+    .stats-bar .meta {
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      gap: 8px;
+    }
+    .verdict {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .verdict.plausible        { background: rgba(74, 222, 128, 0.15); color: var(--success); }
+    .verdict.suspicious       { background: rgba(248, 113, 113, 0.15); color: var(--danger);  }
+    .verdict.insufficient_data{ background: var(--bg-elev-2); color: var(--text-dim); }
+
+    .stats-empty {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* ============================================================
+       6. 토스트 알림
+       ============================================================ */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 14px 20px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 380px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ====================== 상단바 ====================== -->
+    <header class="topbar">
+      <div class="brand">
+        🐈 <span class="accent">CatChain</span> Enhancer
+        <span class="badge" id="modeBadge">참고용 예시</span>
+      </div>
+      <div class="wallet">
+        <span id="netPill" class="net-pill">네트워크 확인 중…</span>
+        <span id="addr" class="addr" style="display:none;"></span>
+        <button id="connectBtn" class="btn">지갑 연결</button>
+      </div>
+    </header>
+
+    <!-- ====================== 메인 ====================== -->
+    <main class="layout">
+
+      <!-- 게임 영역 -->
+      <section class="panel game">
+        <h2>고양이 강화</h2>
+
+        <div class="cat-stage" id="catStage">
+          <div id="catContainer"></div>
+          <div class="result-overlay" id="resultOverlay"></div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="label">현재 등급</div>
+            <div class="value">+<span id="curLevel">0</span></div>
+            <div class="sub">최대 +<span id="maxLevel">10</span></div>
+          </div>
+          <div class="info-card">
+            <div class="label">다음 단계 확률</div>
+            <div class="value"><span id="nextRate">--</span>%</div>
+            <div class="sub">컨트랙트 표기값</div>
+          </div>
+          <div class="info-card">
+            <div class="label">총 시도</div>
+            <div class="value"><span id="totalAttempts">--</span></div>
+            <div class="sub">내 누적 시도</div>
+          </div>
+        </div>
+
+        <button id="enhanceBtn" class="btn enhance-btn" disabled>
+          지갑을 먼저 연결하세요
+        </button>
+
+        <div class="tx-status" id="txStatus">
+          <div class="row">
+            <span>상태</span>
+            <span class="tx-state idle" id="txState">idle</span>
+          </div>
+          <div class="row" id="txHashRow" style="display:none;">
+            <span>트랜잭션</span>
+            <a id="txHashLink" href="#" target="_blank" rel="noopener">--</a>
+          </div>
+          <div class="row" id="txMsgRow" style="display:none;">
+            <span id="txMsg"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 통계 패널 -->
+      <aside class="panel stats">
+        <h2>실측 확률 (차별화 #1)</h2>
+        <div id="statsContent">
+          <div class="stats-empty">통계 로딩 중…</div>
+        </div>
+      </aside>
+
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- ============================================================
+       ethers.js v6 (CDN)
+       ============================================================ -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+
+  <script>
+  /* ============================================================
+   *  설정값 — 배포 시 이 블록만 교체
+   * ============================================================ */
+  const CONFIG = {
+    // 컨트랙트 주소 (배포 후 채울 것)
+    CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000000',
+
+    // Sepolia 테스트넷 예시. 실제 배포 체인으로 교체
+    CHAIN_ID: 11155111,
+    CHAIN_NAME: 'Sepolia',
+    EXPLORER_BASE: 'https://sepolia.etherscan.io',
+
+    // 같은 백엔드 서버에서 서빙된다고 가정 → 상대경로
+    STATS_API: '/api/stats/by-level',
+    STATS_POLL_MS: 7000,
+
+    // 단일 아이템 데모. 실제 환경에선 아이템 선택 UI 추가
+    DEMO_ITEM_ID: 1n,
+    DEMO_ENHANCEMENT_TYPE: 0,  // 일반 강화
+
+    MAX_LEVEL: 10,
+
+    // VRF 응답 대기 타임아웃 (실제론 더 길게)
+    VRF_WAIT_TIMEOUT_MS: 120_000,
+  };
+
+  /* ============================================================
+   *  컨트랙트 ABI — V2 합의 이벤트 + 가정 함수
+   *  ★ 함수명은 미합의 가정 → 실제 합의 후 교체
+   * ============================================================ */
+  const ABI_FRAGMENT = [
+    // === 함수 (가정 — 컨트랙트 팀과 확정 필요) ===
+    'function requestEnhancement(uint256 itemId, uint8 enhancementType) external returns (uint256 attemptId)',
+    'function getCurrentLevel(address user, uint256 itemId) external view returns (uint8)',
+    'function getProbability(uint8 level) external view returns (uint32)',
+    'function getTotalAttempts(address user, uint256 itemId) external view returns (uint256)',
+
+    // === 이벤트 (V2 명세 — docs/events.md, 변경 금지) ===
+    'event EnhancementRequested(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, uint8 beforeLevel, uint8 enhancementType, uint32 successRate, bytes32 randomnessRequestId)',
+    'event EnhancementCompleted(uint256 indexed attemptId, address indexed user, uint256 indexed itemId, bytes32 randomnessRequestId, uint256 randomValue, uint8 beforeLevel, uint8 afterLevel, bool success, uint32 successRate)',
+    'event ProbabilityTableUpdated(uint8 indexed level, uint32 oldSuccessRate, uint32 newSuccessRate, uint256 timestamp)',
+  ];
+
+  /* ============================================================
+   *  데모 모드 (?demo=1)
+   *  ────────────────────────────────────────────────────────────
+   *  컨트랙트/백엔드 없이 모든 UI 동작을 확인할 수 있는 mock 모드.
+   *  game.html?demo=1 로 접속.
+   *  - MetaMask 불필요
+   *  - 강화 시도는 setTimeout 으로 VRF 지연 시뮬레이션
+   *  - 통계 패널은 V2 실제 응답 형식 그대로 더미 생성
+   *    (1개 단계는 의도적으로 'suspicious' 로 표시되어 차별화 #1 시연)
+   * ============================================================ */
+  const DEMO = new URLSearchParams(location.search).has('demo');
+
+  const MockContract = {
+    _level: 0,
+    _attempts: 0n,
+    _nextAttemptId: 1n,
+    // 단계별 성공 확률 (basis point) — level n → n+1
+    _rates: {
+      1: 9500, 2: 9000, 3: 8000, 4: 7000, 5: 6000,
+      6: 5000, 7: 4000, 8: 3000, 9: 2000, 10: 1000,
+    },
+
+    async getCurrentLevel()  { return this._level; },
+    async getTotalAttempts() { return this._attempts; },
+    async getProbability(level) { return this._rates[Number(level)] || 0; },
+
+    async requestEnhancement() {
+      const attemptId = this._nextAttemptId++;
+      const beforeLevel = this._level;
+      const rate = this._rates[beforeLevel + 1] || 0;
+      const fakeHash = '0x' + Array.from({length: 64}, () =>
+        Math.floor(Math.random() * 16).toString(16)).join('');
+
+      return {
+        hash: fakeHash,
+        wait: async () => {
+          await new Promise(r => setTimeout(r, 1200));
+          return {
+            status: 1,
+            logs: [],
+            _fakeBeforeLevel: beforeLevel,
+            _fakeRate: rate,
+            _fakeAttemptId: attemptId,
+          };
+        },
+      };
+    },
+
+    // VRF 응답 시뮬레이션 (2~4초 후 콜백)
+    simulateCompletion(beforeLevel, rate, onComplete) {
+      setTimeout(() => {
+        const roll = BigInt(Math.floor(Math.random() * 10000));
+        const success = roll < BigInt(rate);
+        const afterLevel = success ? beforeLevel + 1 : beforeLevel;
+        this._level = afterLevel;
+        this._attempts += 1n;
+        onComplete({
+          success,
+          beforeLevel,
+          afterLevel,
+          randomValue: roll * 10n ** 70n + BigInt(Math.floor(Math.random() * 1e9)),
+          successRate: rate,
+          txHash: '0x' + Array.from({length: 64}, () =>
+            Math.floor(Math.random() * 16).toString(16)).join(''),
+        });
+      }, 2000 + Math.random() * 2000);
+    },
+  };
+
+  // V2 실제 /api/stats/by-level 응답 형식대로 더미 생성
+  function generateMockStats() {
+    const rates = MockContract._rates;
+    const levels = [];
+    for (let lv = 0; lv <= 9; lv++) {
+      const declaredBp = rates[lv + 1];
+      const total = 200 + Math.floor(Math.random() * 800);
+      // 단계 5는 의도적으로 의심 케이스 (운영자 너프 시연)
+      const isSuspicious = lv === 5;
+      const observedRate = isSuspicious
+        ? declaredBp * 0.65
+        : declaredBp * (0.95 + Math.random() * 0.1);
+      const hits = Math.round(total * observedRate / 10000);
+      const observedBp = Math.round((hits / total) * 10000);
+
+      // Wilson 95% CI 정식 공식
+      const p = hits / total;
+      const z = 1.96, n = total;
+      const denom = 1 + (z * z) / n;
+      const center = (p + (z * z) / (2 * n)) / denom;
+      const margin = z * Math.sqrt((p * (1 - p) / n + (z * z) / (4 * n * n))) / denom;
+
+      levels.push({
+        beforeLevel: lv,
+        declaredRateBp: declaredBp,
+        observedSuccess: hits,
+        observedTotal: total,
+        observedRateBp: observedBp,
+        wilson95: {
+          lowBp:  Math.max(0,     Math.round((center - margin) * 10000)),
+          highBp: Math.min(10000, Math.round((center + margin) * 10000)),
+        },
+        chiSquare: {
+          stat:   isSuspicious ? 25 + Math.random() * 5 : 0.1 + Math.random() * 2,
+          pValue: isSuspicious ? 0.001 : 0.2 + Math.random() * 0.7,
+        },
+        fairnessVerdict: total < 30 ? 'insufficient_data'
+                       : isSuspicious ? 'suspicious'
+                       : 'plausible',
+      });
+    }
+    return { levels };
+  }
+
+  /* ============================================================
+   *  상태
+   * ============================================================ */
+  const state = {
+    provider: null,       // ethers.BrowserProvider
+    signer: null,         // ethers.Signer
+    contract: null,       // ethers.Contract (signer 연결)
+    contractRead: null,   // ethers.Contract (provider 연결, view 전용)
+    userAddress: null,
+    chainOk: false,
+    curLevel: 0,
+    nextRate: 0,          // basis points (0~10000)
+    totalAttempts: 0n,
+    txState: 'idle',
+    pendingAttemptId: null,
+  };
+
+  /* ============================================================
+   *  유틸
+   * ============================================================ */
+  const $ = (id) => document.getElementById(id);
+
+  function shortAddr(addr) {
+    return addr.slice(0, 6) + '…' + addr.slice(-4);
+  }
+
+  function bpToPercent(bp) {
+    return (Number(bp) / 100).toFixed(2);
+  }
+
+  function showToast(msg, isError = false) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.toggle('error', isError);
+    el.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  function humanizeError(err) {
+    // ethers v6 에러 분류
+    if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
+      return '사용자가 서명을 거부했습니다.';
+    }
+    if (err?.code === 'INSUFFICIENT_FUNDS') {
+      return '가스비가 부족합니다.';
+    }
+    if (err?.code === 'NETWORK_ERROR') {
+      return '네트워크 오류 — RPC 연결을 확인하세요.';
+    }
+    // 컨트랙트 revert 사유
+    const reason = err?.reason || err?.shortMessage || err?.info?.error?.message;
+    if (reason) return `컨트랙트 거부: ${reason}`;
+    return err?.message || '알 수 없는 오류';
+  }
+
+  /* ============================================================
+   *  SVG 고양이 — 단계별 (인라인, 이미지 파일 X)
+   *  레벨 0~10 — 올라갈수록 액세서리 추가
+   * ============================================================ */
+  function renderCat(level) {
+    // 베이스: 회색→오렌지→골드 색조 그라데이션
+    const palette = [
+      '#9ca3af','#a78bfa','#60a5fa','#22d3ee','#34d399',
+      '#facc15','#fb923c','#f87171','#ec4899','#a855f7','#fbbf24',
+    ];
+    const fur = palette[Math.min(level, 10)];
+
+    // 상위 등급일수록 디테일 추가
+    const hasBow      = level >= 2;
+    const hasGlasses  = level >= 4;
+    const hasCrown    = level >= 7;
+    const hasHalo     = level >= 9;
+    const hasSparkle  = level >= 10;
+
+    return `
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        ${hasHalo ? `
+          <ellipse cx="100" cy="22" rx="45" ry="8"
+                   fill="none" stroke="#fbbf24" stroke-width="3"/>
+        ` : ''}
+
+        <!-- 귀 -->
+        <polygon points="50,60 70,30 85,65" fill="${fur}"/>
+        <polygon points="150,60 130,30 115,65" fill="${fur}"/>
+        <polygon points="55,58 70,38 80,60" fill="#fce7f3"/>
+        <polygon points="145,58 130,38 120,60" fill="#fce7f3"/>
+
+        <!-- 머리 -->
+        <ellipse cx="100" cy="100" rx="55" ry="50" fill="${fur}"/>
+
+        <!-- 줄무늬 (레벨 3+) -->
+        ${level >= 3 ? `
+          <path d="M 60 80 Q 70 75 80 82" stroke="#000" stroke-width="2" fill="none" opacity="0.3"/>
+          <path d="M 60 95 Q 70 90 80 97" stroke="#000" stroke-width="2" fill="none" opacity="0.3"/>
+          <path d="M 140 80 Q 130 75 120 82" stroke="#000" stroke-width="2" fill="none" opacity="0.3"/>
+          <path d="M 140 95 Q 130 90 120 97" stroke="#000" stroke-width="2" fill="none" opacity="0.3"/>
+        ` : ''}
+
+        <!-- 눈 -->
+        ${hasGlasses ? `
+          <circle cx="80" cy="95" r="14" fill="white" stroke="#1f2937" stroke-width="2.5"/>
+          <circle cx="120" cy="95" r="14" fill="white" stroke="#1f2937" stroke-width="2.5"/>
+          <line x1="94" y1="95" x2="106" y2="95" stroke="#1f2937" stroke-width="2.5"/>
+          <circle cx="80" cy="95" r="4" fill="#1f2937"/>
+          <circle cx="120" cy="95" r="4" fill="#1f2937"/>
+        ` : `
+          <ellipse cx="80" cy="95" rx="5" ry="8" fill="#1f2937"/>
+          <ellipse cx="120" cy="95" rx="5" ry="8" fill="#1f2937"/>
+          <circle cx="81" cy="93" r="1.5" fill="white"/>
+          <circle cx="121" cy="93" r="1.5" fill="white"/>
+        `}
+
+        <!-- 코 -->
+        <path d="M 95 115 L 105 115 L 100 122 Z" fill="#ec4899"/>
+
+        <!-- 입 -->
+        <path d="M 100 122 Q 92 130 85 128" stroke="#1f2937" stroke-width="2" fill="none"/>
+        <path d="M 100 122 Q 108 130 115 128" stroke="#1f2937" stroke-width="2" fill="none"/>
+
+        <!-- 수염 -->
+        <line x1="60" y1="118" x2="80" y2="120" stroke="#1f2937" stroke-width="1.5"/>
+        <line x1="60" y1="125" x2="80" y2="125" stroke="#1f2937" stroke-width="1.5"/>
+        <line x1="140" y1="118" x2="120" y2="120" stroke="#1f2937" stroke-width="1.5"/>
+        <line x1="140" y1="125" x2="120" y2="125" stroke="#1f2937" stroke-width="1.5"/>
+
+        <!-- 나비넥타이 (레벨 2+) -->
+        ${hasBow ? `
+          <polygon points="85,155 100,150 100,160" fill="#dc2626"/>
+          <polygon points="115,155 100,150 100,160" fill="#dc2626"/>
+          <circle cx="100" cy="155" r="4" fill="#991b1b"/>
+        ` : ''}
+
+        <!-- 왕관 (레벨 7+) -->
+        ${hasCrown ? `
+          <polygon points="65,50 75,30 85,45 100,25 115,45 125,30 135,50 130,55 70,55"
+                   fill="#fbbf24" stroke="#d97706" stroke-width="1.5"/>
+          <circle cx="100" cy="38" r="3" fill="#dc2626"/>
+        ` : ''}
+
+        <!-- 반짝임 (레벨 10) -->
+        ${hasSparkle ? `
+          <text x="40" y="50" font-size="20">✨</text>
+          <text x="155" y="55" font-size="20">✨</text>
+          <text x="30" y="140" font-size="16">⭐</text>
+          <text x="160" y="140" font-size="16">⭐</text>
+        ` : ''}
+      </svg>
+    `;
+  }
+
+  /* ============================================================
+   *  트랜잭션 상태 UI
+   * ============================================================ */
+  function setTxState(state, msg = '', txHash = null) {
+    state || (state = 'idle');
+    const labels = {
+      idle: '대기',
+      pending: '서명 대기 중',
+      mining: '채굴 대기 중',
+      waiting: 'VRF 응답 대기 중',
+      confirmed: '완료',
+      failed: '실패',
+    };
+    $('txStatus').classList.add('show');
+    const stateEl = $('txState');
+    stateEl.className = 'tx-state ' + state;
+    stateEl.textContent = labels[state] || state;
+
+    if (txHash) {
+      $('txHashRow').style.display = 'flex';
+      const link = $('txHashLink');
+      link.href = `${CONFIG.EXPLORER_BASE}/tx/${txHash}`;
+      link.textContent = shortAddr(txHash);
+    }
+    if (msg) {
+      $('txMsgRow').style.display = 'flex';
+      $('txMsg').textContent = msg;
+    } else {
+      $('txMsgRow').style.display = 'none';
+    }
+  }
+
+  /* ============================================================
+   *  네트워크 체크
+   * ============================================================ */
+  async function ensureChain() {
+    const net = await state.provider.getNetwork();
+    const ok = Number(net.chainId) === CONFIG.CHAIN_ID;
+    state.chainOk = ok;
+    const pill = $('netPill');
+    pill.textContent = ok
+      ? `${CONFIG.CHAIN_NAME} 연결됨`
+      : `잘못된 네트워크: ${net.name || net.chainId}`;
+    pill.className = 'net-pill ' + (ok ? 'ok' : 'bad');
+
+    if (!ok) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x' + CONFIG.CHAIN_ID.toString(16) }],
+        });
+      } catch (err) {
+        showToast(`수동으로 ${CONFIG.CHAIN_NAME} 으로 전환해주세요.`, true);
+      }
+    }
+    return ok;
+  }
+
+  /* ============================================================
+   *  지갑 연결
+   * ============================================================ */
+  async function connectWallet() {
+    // ============ 데모 모드 분기 ============
+    if (DEMO) {
+      state.userAddress = '0xdemo000000000000000000000000000000000001';
+      state.chainOk = true;
+      $('netPill').textContent = `${CONFIG.CHAIN_NAME} (MOCK)`;
+      $('netPill').className = 'net-pill ok';
+      $('modeBadge').textContent = 'DEMO MODE';
+      $('modeBadge').style.background = 'var(--warning)';
+      $('modeBadge').style.color = '#0f1115';
+      $('connectBtn').style.display = 'none';
+      $('addr').style.display = 'inline-block';
+      $('addr').textContent = 'DEMO USER';
+      await refreshChainState();
+      $('enhanceBtn').disabled = false;
+      $('enhanceBtn').textContent = '강화 시도 (DEMO)';
+      showToast('데모 모드 활성화 — 컨트랙트 없이 동작합니다');
+      return;
+    }
+    // ====================================
+
+    if (!window.ethereum) {
+      showToast('MetaMask가 감지되지 않습니다. 확장 프로그램을 설치하세요.', true);
+      return;
+    }
+    try {
+      state.provider = new ethers.BrowserProvider(window.ethereum);
+
+      // 1. 계정 요청
+      const accounts = await state.provider.send('eth_requestAccounts', []);
+      state.userAddress = accounts[0].toLowerCase();
+
+      // 2. 체인 체크
+      if (!(await ensureChain())) return;
+
+      // 3. signer / 컨트랙트 초기화
+      state.signer = await state.provider.getSigner();
+      state.contract = new ethers.Contract(
+        CONFIG.CONTRACT_ADDRESS,
+        ABI_FRAGMENT,
+        state.signer
+      );
+      state.contractRead = new ethers.Contract(
+        CONFIG.CONTRACT_ADDRESS,
+        ABI_FRAGMENT,
+        state.provider
+      );
+
+      // 4. UI 갱신
+      $('connectBtn').style.display = 'none';
+      $('addr').style.display = 'inline-block';
+      $('addr').textContent = shortAddr(state.userAddress);
+
+      // 5. 이벤트 리스너
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', () => window.location.reload());
+
+      // 6. 컨트랙트 EnhancementCompleted 구독
+      subscribeCompleted();
+
+      // 7. 온체인 상태 로드
+      await refreshChainState();
+
+      $('enhanceBtn').disabled = false;
+      $('enhanceBtn').textContent = '강화 시도 (gas 필요)';
+      showToast('지갑 연결됨');
+    } catch (err) {
+      console.error(err);
+      showToast(humanizeError(err), true);
+    }
+  }
+
+  function handleAccountsChanged(accounts) {
+    if (!accounts.length) {
+      // 연결 해제
+      window.location.reload();
+      return;
+    }
+    if (accounts[0].toLowerCase() !== state.userAddress) {
+      window.location.reload();
+    }
+  }
+
+  /* ============================================================
+   *  온체인 상태 로드
+   * ============================================================ */
+  async function refreshChainState() {
+    if (DEMO) {
+      state.curLevel = MockContract._level;
+      state.totalAttempts = MockContract._attempts;
+      state.nextRate = state.curLevel < CONFIG.MAX_LEVEL
+        ? await MockContract.getProbability(state.curLevel + 1)
+        : 0;
+      renderState();
+      return;
+    }
+    if (!state.contractRead) return;
+    try {
+      // 데모용 단일 아이템 가정
+      const [level, totalAttempts] = await Promise.all([
+        state.contractRead.getCurrentLevel(state.userAddress, CONFIG.DEMO_ITEM_ID),
+        state.contractRead.getTotalAttempts(state.userAddress, CONFIG.DEMO_ITEM_ID),
+      ]);
+      state.curLevel = Number(level);
+      state.totalAttempts = totalAttempts;
+
+      const next = state.curLevel < CONFIG.MAX_LEVEL
+        ? Number(await state.contractRead.getProbability(state.curLevel + 1))
+        : 0;
+      state.nextRate = next;
+
+      renderState();
+    } catch (err) {
+      // 컨트랙트 미배포 등 — 데모용 더미값
+      console.warn('[chain] 상태 로드 실패, 더미값 사용:', err.message);
+      state.curLevel = 0;
+      state.totalAttempts = 0n;
+      state.nextRate = 8000; // 80%
+      renderState();
+    }
+  }
+
+  function renderState() {
+    $('curLevel').textContent = state.curLevel;
+    $('maxLevel').textContent = CONFIG.MAX_LEVEL;
+    $('nextRate').textContent = state.curLevel >= CONFIG.MAX_LEVEL
+      ? 'MAX'
+      : bpToPercent(state.nextRate);
+    $('totalAttempts').textContent = state.totalAttempts.toString();
+    $('catContainer').innerHTML = renderCat(state.curLevel);
+
+    const canEnhance = state.chainOk
+      && state.curLevel < CONFIG.MAX_LEVEL
+      && state.txState !== 'pending'
+      && state.txState !== 'mining'
+      && state.txState !== 'waiting';
+    $('enhanceBtn').disabled = !canEnhance;
+    if (state.curLevel >= CONFIG.MAX_LEVEL) {
+      $('enhanceBtn').textContent = '최대 등급 달성!';
+    }
+  }
+
+  /* ============================================================
+   *  강화 시도
+   * ============================================================ */
+  async function enhance() {
+    // ============ 데모 모드 분기 ============
+    if (DEMO) {
+      try {
+        setTxState('pending', '데모 서명 시뮬레이션 중…');
+        $('enhanceBtn').disabled = true;
+        await new Promise(r => setTimeout(r, 500));
+
+        const tx = await MockContract.requestEnhancement();
+        setTxState('mining', '데모 채굴 대기 중…', tx.hash);
+
+        const receipt = await tx.wait();
+        setTxState('waiting', '데모 VRF 응답 대기 중…', tx.hash);
+
+        MockContract.simulateCompletion(
+          receipt._fakeBeforeLevel,
+          receipt._fakeRate,
+          (result) => handleCompletion(result),
+        );
+      } catch (err) {
+        setTxState('failed', humanizeError(err));
+        $('enhanceBtn').disabled = false;
+      }
+      return;
+    }
+    // ====================================
+
+    if (!state.contract) return;
+    try {
+      setTxState('pending', '지갑에서 서명해주세요…');
+      $('enhanceBtn').disabled = true;
+
+      // 1. 트랜잭션 송신
+      const tx = await state.contract.requestEnhancement(
+        CONFIG.DEMO_ITEM_ID,
+        CONFIG.DEMO_ENHANCEMENT_TYPE
+      );
+      setTxState('mining', '블록에 포함되길 기다리는 중…', tx.hash);
+
+      // 2. 영수증 대기
+      const receipt = await tx.wait();
+      if (receipt.status !== 1) {
+        throw new Error('트랜잭션 실패 (status=0)');
+      }
+
+      // 3. EnhancementRequested 로그에서 attemptId 추출
+      const iface = new ethers.Interface(ABI_FRAGMENT);
+      for (const log of receipt.logs) {
+        try {
+          const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+          if (parsed?.name === 'EnhancementRequested') {
+            state.pendingAttemptId = parsed.args.attemptId;
+            break;
+          }
+        } catch { /* 다른 컨트랙트 로그 — 무시 */ }
+      }
+
+      setTxState('waiting', 'VRF 난수를 기다리는 중… (수초~수분)', tx.hash);
+
+      // 4. VRF 응답 타임아웃 가드
+      setTimeout(() => {
+        if (state.txState === 'waiting') {
+          setTxState('failed', 'VRF 응답 타임아웃 — 익스플로러에서 직접 확인해주세요.', tx.hash);
+          $('enhanceBtn').disabled = false;
+        }
+      }, CONFIG.VRF_WAIT_TIMEOUT_MS);
+
+    } catch (err) {
+      console.error(err);
+      setTxState('failed', humanizeError(err));
+      $('enhanceBtn').disabled = false;
+    }
+  }
+
+  /* ============================================================
+   *  EnhancementCompleted 이벤트 구독 (★ V2 명세)
+   * ============================================================ */
+  function subscribeCompleted() {
+    if (!state.contractRead) return;
+
+    // 내 주소 + 데모 아이템 필터
+    const filter = state.contractRead.filters.EnhancementCompleted(
+      null,                  // attemptId
+      state.userAddress,     // user (indexed)
+      CONFIG.DEMO_ITEM_ID    // itemId
+    );
+
+    state.contractRead.on(filter, (
+      attemptId, user, itemId, randomnessRequestId, randomValue,
+      beforeLevel, afterLevel, success, successRate, event
+    ) => {
+      // 내 pending attempt 가 아니면 무시 (다른 탭/디바이스에서 시도한 것)
+      if (state.pendingAttemptId !== null && attemptId !== state.pendingAttemptId) {
+        return;
+      }
+      handleCompletion({
+        success,
+        beforeLevel: Number(beforeLevel),
+        afterLevel:  Number(afterLevel),
+        randomValue,
+        successRate: Number(successRate),
+        txHash: event.log.transactionHash,
+      });
+    });
+  }
+
+  /* ============================================================
+   *  강화 결과 처리 (real / demo 공통)
+   * ============================================================ */
+  function handleCompletion({ success, beforeLevel, afterLevel, randomValue, successRate, txHash }) {
+    state.curLevel = Number(afterLevel);
+    state.totalAttempts += 1n;
+    state.pendingAttemptId = null;
+
+    // 결과 오버레이
+    const overlay = $('resultOverlay');
+    overlay.textContent = success ? '강화 성공!' : '강화 실패…';
+    overlay.className = 'result-overlay show ' + (success ? 'success' : 'fail');
+    $('catStage').classList.add(success ? 'success' : 'fail');
+
+    setTimeout(() => {
+      overlay.classList.remove('show');
+      $('catStage').classList.remove('success', 'fail');
+    }, 1500);
+
+    setTxState('confirmed',
+      `결과: ${success ? '성공' : '실패'} (난수=${randomValue.toString().slice(0, 10)}…)`,
+      txHash);
+
+    refreshChainState();
+    showToast(success ? '🎉 강화 성공!' : '💔 강화 실패');
+
+    // 데모/실제 모드 모두 버튼 재활성화는 refreshChainState → renderState 가 처리
+    if (DEMO) {
+      $('enhanceBtn').disabled = state.curLevel >= CONFIG.MAX_LEVEL;
+    }
+  }
+
+  /* ============================================================
+   *  통계 패널 폴링 (★ 차별화 #1 — Wilson CI + 카이제곱)
+   * ============================================================ */
+  async function pollStats() {
+    if (DEMO) {
+      renderStats(generateMockStats().levels);
+      return;
+    }
+    try {
+      const res = await fetch(CONFIG.STATS_API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      renderStats(data.levels || []);
+    } catch (err) {
+      $('statsContent').innerHTML = `
+        <div class="stats-empty">
+          통계 API 미응답<br>
+          <small style="opacity:0.6">${err.message}</small>
+        </div>`;
+    }
+  }
+
+  function renderStats(levels) {
+    if (!levels.length) {
+      $('statsContent').innerHTML = `
+        <div class="stats-empty">아직 데이터가 없습니다</div>`;
+      return;
+    }
+
+    // V2 실제 응답 형식:
+    //  beforeLevel, declaredRateBp, observedSuccess, observedTotal,
+    //  observedRateBp, wilson95: {lowBp, highBp},
+    //  chiSquare: {stat, pValue}, fairnessVerdict
+    const verdictLabel = {
+      plausible: '신뢰가능',
+      suspicious: '의심',
+      insufficient_data: '데이터부족',
+    };
+
+    const rows = levels.map(L => {
+      const declaredPct = (L.declaredRateBp / 100).toFixed(1);
+      const observedPct = (L.observedRateBp / 100).toFixed(1);
+      const maxBp = Math.max(L.declaredRateBp, L.observedRateBp, 100);
+      const declaredW = (L.declaredRateBp / maxBp) * 100;
+      const observedW = (L.observedRateBp / maxBp) * 100;
+      const pVal = L.chiSquare?.pValue?.toFixed(3) ?? '--';
+
+      return `
+        <div class="stats-row">
+          <div class="stats-level">+${L.beforeLevel}</div>
+          <div class="stats-bar">
+            <div class="compare">
+              <div class="declared" style="width:${declaredW}%" title="표기 ${declaredPct}%"></div>
+            </div>
+            <div class="compare">
+              <div class="observed" style="width:${observedW}%" title="실측 ${observedPct}%"></div>
+            </div>
+            <div class="meta">
+              <span>표기 ${declaredPct}%</span>
+              <span>실측 ${observedPct}%</span>
+              <span>n=${L.observedTotal}</span>
+              <span>p=${pVal}</span>
+            </div>
+          </div>
+          <div class="verdict ${L.fairnessVerdict}">
+            ${verdictLabel[L.fairnessVerdict] || L.fairnessVerdict}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    $('statsContent').innerHTML = rows;
+  }
+
+  /* ============================================================
+   *  부팅
+   * ============================================================ */
+  $('connectBtn').addEventListener('click', connectWallet);
+  $('enhanceBtn').addEventListener('click', enhance);
+
+  // 초기 SVG (지갑 연결 전에도 보이게)
+  $('catContainer').innerHTML = renderCat(0);
+
+  // 통계 폴링 시작 (지갑 연결과 독립)
+  pollStats();
+  setInterval(pollStats, CONFIG.STATS_POLL_MS);
+
+  // 페이지 진입 시 자동 연결 (데모면 즉시, 실제면 권한 있을 때만)
+  if (DEMO) {
+    connectWallet();
+  } else if (window.ethereum?.selectedAddress) {
+    connectWallet();
+  } else {
+    $('netPill').textContent = '지갑 미연결';
+  }
+  </script>
+</body>
+</html>
