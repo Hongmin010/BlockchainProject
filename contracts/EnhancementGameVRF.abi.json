@@ -162,6 +162,25 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "bytes32",
+        "name": "oldRoot",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "newRoot",
+        "type": "bytes32"
+      }
+    ],
+    "name": "MerkleRootUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "address",
         "name": "from",
         "type": "address"
@@ -344,6 +363,35 @@
         "internalType": "uint256",
         "name": "itemId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "enhancementType",
+        "type": "uint8"
+      }
+    ],
+    "name": "getEnhancementLeaf",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "itemId",
+        "type": "uint256"
       }
     ],
     "name": "getItemLevel",
@@ -376,6 +424,53 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "itemId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "enhancementType",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bytes32[]",
+        "name": "proof",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "isValidEnhancementProof",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "merkleRoot",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
       }
     ],
     "stateMutability": "view",
@@ -518,6 +613,40 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "itemId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "enhancementType",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bytes32[]",
+        "name": "proof",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "requestEnhancementWithProof",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "attemptId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "vrfRequestId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "s_vrfCoordinator",
     "outputs": [
@@ -539,6 +668,19 @@
       }
     ],
     "name": "setCoordinator",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "newMerkleRoot",
+        "type": "bytes32"
+      }
+    ],
+    "name": "setMerkleRoot",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
