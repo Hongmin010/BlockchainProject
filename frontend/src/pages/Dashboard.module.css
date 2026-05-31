@@ -1,0 +1,236 @@
+.inner {
+  padding: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 페이지 타이틀 ── */
+.titleRow {
+  margin-bottom: 28px;
+}
+
+.title {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  margin: 0 0 6px;
+}
+
+/* ── 요약 카드 ── */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summaryCard {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+
+.summaryValue {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 10px 0 6px;
+}
+
+.summarySub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ── 차트 그리드 ── */
+.chartGrid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 카드 헤더 ── */
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendDotGray {
+  width: 12px;
+  height: 12px;
+  background: var(--ink-4);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legendDotEmber {
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(180deg, var(--ember-300), var(--ember-500));
+  border-radius: 3px;
+  box-shadow: 0 0 6px rgba(255, 122, 26, 0.5);
+  flex-shrink: 0;
+}
+
+/* ── 막대 차트 ── */
+.barChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  height: 280px;
+  padding: 0 0 30px;
+  border-bottom: 1px solid var(--bg-3);
+  position: relative;
+}
+
+.barGroup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100%;
+  width: 100%;
+  justify-content: center;
+}
+
+.barExpected {
+  width: 18px;
+  background: var(--ink-4);
+  border-radius: 4px 4px 0 0;
+}
+
+.barActual {
+  width: 18px;
+  background: linear-gradient(180deg, var(--ember-300), var(--ember-500));
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 0 8px rgba(255, 122, 26, 0.4);
+}
+
+.barLabel {
+  position: absolute;
+  bottom: -22px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 검증 안내 */
+.verifyNote {
+  margin-top: 22px;
+  padding: 10px 14px;
+  background: rgba(95, 195, 122, 0.06);
+  border: 1px solid rgba(95, 195, 122, 0.2);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── 도넛 차트 ── */
+.donutWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutLegend {
+  display: flex;
+  border-top: 1px solid var(--bg-3);
+  padding-top: 14px;
+  gap: 10px;
+}
+
+.donutLegendItem {
+  flex: 1;
+  text-align: center;
+}
+
+.donutLegendValue {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.donutDivider {
+  width: 1px;
+  background: var(--bg-3);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 1024px) {
+  .inner {
+    padding: 32px 24px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .inner {
+    padding: 24px 16px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryValue {
+    font-size: 36px;
+  }
+}

@@ -1,0 +1,227 @@
+.inner {
+  padding: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 타이틀 ── */
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 28px;
+}
+
+.title {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  margin: 0 0 6px;
+}
+
+.titleActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 요약 카드 ── */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summaryCard {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.summaryIcon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.summaryValue {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 10px 0 6px;
+}
+
+.summarySub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ── 테이블 ── */
+.tableWrap {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead tr {
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.table th {
+  padding: 14px 20px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--bg-3);
+  transition: background 0.12s;
+}
+
+.table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--bg-3);
+}
+
+.table td {
+  padding: 14px 20px;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+
+.monoCell {
+  font-family: var(--mono);
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.timeCell {
+  font-family: var(--mono);
+  font-size: 11px !important;
+  color: var(--ink-3) !important;
+}
+
+.actionCell {
+  text-align: right;
+}
+
+.verifyLink {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ember-300);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.verifyLink:hover {
+  color: var(--ember-500);
+}
+
+/* ── 페이지네이션 ── */
+.pagination {
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--bg-3);
+}
+
+.pages {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.pageBtn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.pageBtn:hover {
+  background: var(--bg-3);
+  color: var(--ink-1);
+}
+
+.pageBtn.active {
+  background: var(--bg-3);
+  color: var(--ink-1);
+  border-color: var(--bg-4);
+}
+
+.pageDot {
+  padding: 6px 4px;
+  color: var(--ink-4);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 1024px) {
+  .inner {
+    padding: 32px 24px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .titleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .inner {
+    padding: 24px 16px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .table th:nth-child(4),
+  .table td:nth-child(4) {
+    display: none;
+  }
+}

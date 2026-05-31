@@ -1,0 +1,38 @@
+.wrap {
+  background: var(--bg-3);
+  border-radius: 99px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ember-500), var(--ember-300));
+  border-radius: 99px;
+  box-shadow: 0 0 8px rgba(255, 122, 26, 0.4);
+  transition: width 0.4s ease;
+}
+
+/* 애니메이션 */
+.animated::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}

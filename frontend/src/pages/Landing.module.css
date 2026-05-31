@@ -1,0 +1,173 @@
+/* ── 히어로 섹션 ── */
+.hero {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 40px;
+  padding: 80px 80px 60px;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.heroTitle {
+  font-size: 76px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  margin: 0 0 24px;
+}
+
+.heroDesc {
+  font-size: 18px;
+  color: var(--ink-2);
+  max-width: 480px;
+  margin: 0 0 36px;
+  line-height: 1.55;
+}
+
+.heroCta {
+  display: flex;
+  gap: 12px;
+}
+
+/* 신뢰 지표 */
+.trustStrip {
+  display: flex;
+  gap: 32px;
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--bg-3);
+}
+
+.trustValue {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* ── 고양이 섹션 ── */
+.heroVisual {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  padding: 40px 20px;
+}
+
+/* 플로팅 카드 */
+.floatResult,
+.floatOdds {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(37, 30, 23, 0.92) !important;
+  backdrop-filter: blur(8px);
+}
+
+.floatResult {
+  bottom: 20px;
+  left: 0;
+  gap: 10px;
+}
+
+.floatOdds {
+  top: 20px;
+  right: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 14px;
+}
+
+/* ── 하단 CTA ── */
+.ctaSection {
+  padding: 0 80px 60px;
+  position: relative;
+  z-index: 1;
+}
+
+.ctaCard {
+  padding: 28px 36px !important;
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 122, 26, 0.08), transparent 60%), var(--bg-2) !important;
+  border-color: var(--bg-4) !important;
+}
+
+.ctaTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ctaDesc {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 1024px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 60px 40px 40px;
+    gap: 48px;
+  }
+
+  .heroTitle {
+    font-size: 56px;
+  }
+
+  .heroVisual {
+    justify-content: center;
+    padding: 40px 60px;
+  }
+
+  .ctaSection {
+    padding: 0 40px 48px;
+  }
+
+  .ctaCard {
+    flex-direction: column !important;
+    gap: 20px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 40px 20px 32px;
+  }
+
+  .heroTitle {
+    font-size: 40px;
+  }
+
+  .heroDesc {
+    font-size: 15px;
+  }
+
+  .heroCta {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .trustStrip {
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .heroVisual {
+    padding: 32px 20px;
+  }
+
+  .ctaSection {
+    padding: 0 20px 40px;
+  }
+}

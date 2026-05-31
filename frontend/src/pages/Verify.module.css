@@ -1,0 +1,234 @@
+.inner {
+  padding: 56px 40px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── 타이틀 ── */
+.titleSection {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 32px;
+}
+
+.title {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  margin: 0 0 12px;
+}
+
+.desc {
+  font-size: 16px;
+  color: var(--ink-2);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* ── 검색 입력 ── */
+.searchWrap {
+  display: flex;
+  gap: 8px;
+  max-width: 900px;
+  margin: 0 auto 24px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink-1);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.input::placeholder {
+  color: var(--ink-4);
+}
+
+/* ── 결과 카드 ── */
+.resultCard {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevate);
+  overflow: hidden;
+}
+
+/* 상태 배너 — 성공 */
+.bannerSuccess {
+  padding: 24px 28px;
+  background: linear-gradient(135deg, rgba(95, 195, 122, 0.15), transparent 70%), var(--bg-2);
+  border-bottom: 1px solid rgba(95, 195, 122, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 상태 배너 — 실패 */
+.bannerFail {
+  padding: 24px 28px;
+  background: linear-gradient(135deg, rgba(232, 98, 60, 0.15), transparent 70%), var(--bg-2);
+  border-bottom: 1px solid rgba(232, 98, 60, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bannerIconSuccess {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(95, 195, 122, 0.15);
+  border: 1px solid rgba(95, 195, 122, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--success);
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 0 16px rgba(95, 195, 122, 0.3);
+  flex-shrink: 0;
+}
+
+.bannerIconFail {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(232, 98, 60, 0.15);
+  border: 1px solid rgba(232, 98, 60, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fail);
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 0 16px rgba(232, 98, 60, 0.3);
+  flex-shrink: 0;
+}
+
+.bannerTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--success);
+  letter-spacing: -0.02em;
+}
+
+.bannerTitleFail {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fail);
+  letter-spacing: -0.02em;
+}
+
+.bannerDesc {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+/* 상세 정보 */
+.detailGrid {
+  padding: 8px 28px 24px;
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  padding: 14px 0;
+  align-items: center;
+}
+
+/* ── 설명 카드 ── */
+.explainer {
+  max-width: 900px;
+  margin: 20px auto 24px;
+  padding: 18px 22px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.explainerIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--ember-300);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.explainerText {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+/* ── 유틸리티 ── */
+.mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+.ember {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ember-300);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 1024px) {
+  .inner {
+    padding: 40px 24px;
+  }
+
+  .title {
+    font-size: 36px;
+  }
+}
+
+@media (max-width: 640px) {
+  .inner {
+    padding: 32px 16px;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .searchWrap {
+    flex-direction: column;
+  }
+
+  .detailRow {
+    grid-template-columns: 140px 1fr;
+  }
+
+  .bannerSuccess,
+  .bannerFail {
+    flex-wrap: wrap;
+  }
+}
