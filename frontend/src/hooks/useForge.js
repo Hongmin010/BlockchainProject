@@ -3,26 +3,25 @@
  *
  * 주요 기능
  * ─────────
- * 1. getUserItemState()   — 아이템 레벨 / 총 시도 수 조회
+ * 1. getItemLevel()        — 아이템 레벨 조회
  * 2. getPendingAttemptId() — 미완료 강화 대기 여부 확인
- * 3. enhance()            — 강화 트랜잭션 전송
+ * 3. requestEnhancement()  — 강화 트랜잭션 전송
  * 4. EnhancementResult 이벤트 리스닝 — VRF 결과 수신
  *
  * 반환값
  * ──────
- * level          number          — 현재 아이템 레벨
- * totalAttempts  number          — 총 강화 시도 수
- * isPending      boolean         — 강화 대기 중(VRF 미수신)
- * status         'idle' | 'waiting_tx' | 'waiting_vrf' | 'done'
- * lastResult     { success, beforeLevel, afterLevel, txHash } | null
- * error          string | null
- * forge          (itemId, enhancementType?) => Promise<void>
- * refreshState   (itemId) => Promise<void>
+ * level        number          — 현재 아이템 레벨
+ * isPending    boolean         — 강화 대기 중(VRF 미수신)
+ * status       'idle' | 'waiting_tx' | 'waiting_vrf' | 'done'
+ * lastResult   { success, beforeLevel, afterLevel, txHash } | null
+ * error        string | null
+ * forge        (itemId, enhancementType?) => Promise<void>
+ * refreshState (itemId) => Promise<void>
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Contract } from 'ethers';
-import ABI from '../abi/EnhancementGameVRF_abi.json';
+import ABI from '../abi/EnhancementGameVRF.abi.json';
 
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 
@@ -34,7 +33,6 @@ function getContract(signerOrProvider) {
 // ─── 훅 ──────────────────────────────────────────────────────────
 export function useForge({ signer, provider, address }) {
   const [level, setLevel] = useState(0);
-  const [totalAttempts, setTotalAttempts] = useState(0);
   const [isPending, setIsPending] = useState(false);
   const [status, setStatus] = useState('idle');
   const [lastResult, setLastResult] = useState(null);
@@ -50,11 +48,11 @@ export function useForge({ signer, provider, address }) {
       try {
         const contract = getContract(provider);
 
-        const [lvl, total] = await contract.getUserItemState(address, itemId);
+        const [lvl, pendingId] = await Promise.all([
+          contract.getItemLevel(address, itemId),
+          contract.getPendingAttemptId(address, itemId),
+        ]);
         setLevel(Number(lvl));
-        setTotalAttempts(Number(total));
-
-        const pendingId = await contract.getPendingAttemptId(address, itemId);
         setIsPending(Number(pendingId) !== 0);
       } catch (err) {
         console.error('[useForge] refreshState 오류:', err);
@@ -69,10 +67,9 @@ export function useForge({ signer, provider, address }) {
 
     const contract = getContract(provider);
 
-    Promise.all([contract.getUserItemState(address, 1), contract.getPendingAttemptId(address, 1)])
-      .then(([[lvl, total], pendingId]) => {
+    Promise.all([contract.getItemLevel(address, 1), contract.getPendingAttemptId(address, 1)])
+      .then(([lvl, pendingId]) => {
         setLevel(Number(lvl));
-        setTotalAttempts(Number(total));
         setIsPending(Number(pendingId) !== 0);
       })
       .catch(console.error);
@@ -196,7 +193,6 @@ export function useForge({ signer, provider, address }) {
 
   return {
     level,
-    totalAttempts,
     isPending,
     status,
     lastResult,
