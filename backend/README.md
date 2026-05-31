@@ -28,7 +28,7 @@
 | 항목 | 값 |
 | --- | --- |
 | 네트워크 | Base Sepolia |
-| 컨트랙트 | `EnhancementGameVRF` — `0xd9f2e53cad519668d02ecc0dbdd49b42938e9ab2` |
+| 컨트랙트 | `EnhancementGameVRF` — `0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59` (Merkle 버전) |
 | VRF Coordinator | `0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE` (v2.5) |
 | ABI | `abi/EnhancementGameVRF.json` (배포본 산출물) |
 
