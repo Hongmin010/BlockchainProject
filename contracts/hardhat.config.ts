@@ -3,6 +3,7 @@ import { configVariable, defineConfig } from "hardhat/config";
 
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthersPlugin],
+
   solidity: {
     profiles: {
       default: {
@@ -19,6 +20,7 @@ export default defineConfig({
       },
     },
   },
+
   networks: {
     hardhatMainnet: {
       type: "edr-simulated",
@@ -39,6 +41,12 @@ export default defineConfig({
       chainType: "l1",
       url: configVariable("BASE_SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+    },
+  },
+
+  verify: {
+    etherscan: {
+      apiKey: configVariable("BASESCAN_API_KEY"),
     },
   },
 });
