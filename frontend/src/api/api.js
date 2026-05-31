@@ -124,8 +124,10 @@ export async function fetchUserStats(address) {
  *   ]
  * }
  */
-export async function fetchRecentAttempts(limit = 20) {
-  return api.get('/api/attempts/recent', { params: { limit } });
+export async function fetchRecentAttempts(limit = 20, user = null) {
+  const params = { limit };
+  if (user) params.user = user;
+  return api.get('/api/attempts/recent', { params });
 }
 
 /**
