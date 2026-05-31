@@ -1,65 +1,135 @@
 import { useState } from 'react';
 import { Header, Badge, Button, TxHash } from '../components';
+import { fetchAttempt, formatDateTime, bpToPercent } from '../api/api';
 import styles from './Verify.module.css';
 
-// 임시로 하드코딩
-const MOCK_RESULT = {
-  tx: '0x9f2a4c8b1e2d6f04a7c3b8d9e1f0a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9',
-  block: '#19,284,177',
-  stage: 'Lv. 4 → Lv. 5',
-  successRate: '10.00%',
-  vrf: '0x4d3a8f…91c2',
-  calc: '0.0821 < 0.10 ⇒ 성공',
-  result: true,
-};
+function buildDetailRows(attempt, verification) {
+  const successRatePct = bpToPercent(attempt.claimedSuccessRateBp);
+  const roll =
+    attempt.randomValue != null ? (BigInt(attempt.randomValue) % 10000n).toString() : '—';
 
-const DETAIL_ROWS = (r) => [
-  { label: '트랜잭션 해시', value: <TxHash hash={r.tx} shorten={false} /> },
-  { label: '블록 번호', value: <span className={styles.mono}>{r.block}</span> },
-  { label: '강화 단계', value: <span className={`${styles.mono} ${styles.bold}`}>{r.stage}</span> },
-  {
-    label: '공개 성공 확률',
-    value: <span className={`${styles.mono} ${styles.ember}`}>{r.successRate}</span>,
-  },
-  { label: '사용된 난수 (VRF)', value: <TxHash hash={r.vrf} shorten={false} /> },
-  {
-    label: '난수 → 결과값',
-    value: (
-      <span className={styles.mono}>
-        {r.calc.replace('성공', '')}
-        <span style={{ color: 'var(--success)', fontWeight: 600 }}>성공</span>
-      </span>
-    ),
-  },
-  {
-    label: '판정 결과',
-    value: (
-      <Badge variant="success" dot>
-        성공
-      </Badge>
-    ),
-  },
-  {
-    label: '조작 여부',
-    value: (
-      <Badge variant="success" dot>
-        검증됨 · 조작 없음
-      </Badge>
-    ),
-  },
-];
+  return [
+    {
+      label: '트랜잭션 해시 (요청)',
+      value: attempt.requestedTxHash ? (
+        <TxHash hash={attempt.requestedTxHash} shorten={false} />
+      ) : (
+        <span className={styles.mono}>—</span>
+      ),
+    },
+    {
+      label: '트랜잭션 해시 (완료)',
+      value: attempt.completedTxHash ? (
+        <TxHash hash={attempt.completedTxHash} shorten={false} />
+      ) : (
+        <span className={styles.mono}>—</span>
+      ),
+    },
+    {
+      label: '강화 단계',
+      value: (
+        <span className={`${styles.mono} ${styles.bold}`}>
+          Lv. {attempt.beforeLevel} → Lv. {attempt.afterLevel ?? attempt.beforeLevel}
+        </span>
+      ),
+    },
+    {
+      label: '공개 성공 확률',
+      value: <span className={`${styles.mono} ${styles.ember}`}>{successRatePct}%</span>,
+    },
+    {
+      label: 'VRF Request ID',
+      value: attempt.vrfRequestId ? (
+        <TxHash hash={attempt.vrfRequestId} shorten={false} />
+      ) : (
+        <span className={styles.mono}>—</span>
+      ),
+    },
+    {
+      label: '사용된 난수 값',
+      value: <span className={styles.mono}>{attempt.randomValue ?? '—'}</span>,
+    },
+    ...(verification
+      ? [
+          {
+            label: '난수 → roll 값',
+            value: (
+              <span className={styles.mono}>
+                {attempt.randomValue} % 10000 = {roll}{' '}
+                {verification.successDerived ? (
+                  <span style={{ color: 'var(--success)', fontWeight: 600 }}>
+                    {'< ' + attempt.claimedSuccessRateBp + ' ⇒ 성공'}
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--fail)', fontWeight: 600 }}>
+                    {'≥ ' + attempt.claimedSuccessRateBp + ' ⇒ 실패'}
+                  </span>
+                )}
+              </span>
+            ),
+          },
+          {
+            label: '판정 결과',
+            value: (
+              <Badge variant={attempt.success ? 'success' : 'fail'} dot>
+                {attempt.success ? '성공' : '실패'}
+              </Badge>
+            ),
+          },
+          {
+            label: '조작 여부',
+            value: verification.matchesContract ? (
+              <Badge variant="success" dot>
+                검증됨 · 조작 없음
+              </Badge>
+            ) : (
+              <Badge variant="fail" dot>
+                불일치 감지 · 요주의
+              </Badge>
+            ),
+          },
+        ]
+      : []),
+    {
+      label: '요청 시각',
+      value: <span className={styles.mono}>{formatDateTime(attempt.requestedAt)}</span>,
+    },
+    {
+      label: '완료 시각',
+      value: <span className={styles.mono}>{formatDateTime(attempt.completedAt)}</span>,
+    },
+  ];
+}
 
 export default function Verify({ address, onConnect }) {
   const [input, setInput] = useState('');
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null); // { attempt, verification }
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleVerify = () => {
-    if (!input.trim()) return;
-    setResult(MOCK_RESULT);
+  const handleVerify = async () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    setError(null);
+    setResult(null);
+    setLoading(true);
+    try {
+      const data = await fetchAttempt(trimmed);
+      setResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const attempt = result?.attempt;
+  const verification = result?.verification;
+  const isPending = attempt?.status === 'pending';
+  const isVerified = verification?.matchesContract === true;
+
   return (
-    <div className="cf-page">
+    <div className={styles.page}>
       <Header address={address} onConnect={onConnect} />
 
       <div className={styles.inner}>
@@ -70,7 +140,7 @@ export default function Verify({ address, onConnect }) {
           </Badge>
           <h1 className={styles.title}>온체인 검증</h1>
           <p className={styles.desc}>
-            트랜잭션 해시를 입력하면 결과가 조작되지 않았는지 직접 확인합니다.
+            Attempt ID(숫자)를 입력하면 결과가 조작되지 않았는지 직접 확인합니다.
           </p>
         </div>
 
@@ -78,58 +148,87 @@ export default function Verify({ address, onConnect }) {
         <div className={styles.searchWrap}>
           <input
             className={styles.input}
-            placeholder="트랜잭션 해시를 입력하세요 (0x...)"
+            placeholder="Attempt ID를 입력하세요 (예: 4219)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
           />
-          <Button variant="primary" size="lg" onClick={handleVerify}>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={handleVerify}
+            loading={loading}
+            disabled={loading}
+          >
             검증하기
           </Button>
         </div>
+
+        {/* ── 에러 ── */}
+        {error && (
+          <div style={{ color: 'var(--fail)', fontSize: 14, marginBottom: 16, marginTop: -8 }}>
+            ⚠ {error}
+          </div>
+        )}
 
         {/* ── 설명 카드 ── */}
         <div className={styles.explainer}>
           <div className={styles.explainerIcon}>?</div>
           <div className={styles.explainerText}>
             <strong style={{ color: 'var(--ink-1)' }}>Chainlink VRF</strong>로 난수를 생성합니다.
-            난수값이 공개 확률보다 작으면 성공, 크면 실패. 서버가 결과를 바꿀 수 없도록 설계되어
-            있습니다.
+            난수를 10000으로 나눈 나머지가 공개 확률(bp)보다 작으면 성공, 크거나 같으면 실패. 서버가
+            결과를 바꿀 수 없도록 설계되어 있습니다.
           </div>
         </div>
 
         {/* ── 결과 카드 ── */}
-        {result && (
+        {attempt && (
           <div className={styles.resultCard}>
             {/* 상태 배너 */}
-            <div className={result.result ? styles.bannerSuccess : styles.bannerFail}>
-              <div className={result.result ? styles.bannerIconSuccess : styles.bannerIconFail}>
-                {result.result ? '✓' : '✕'}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div className={result.result ? styles.bannerTitle : styles.bannerTitleFail}>
-                  {result.result ? '이상 없음' : '검증 실패'}
-                </div>
-                <div className={styles.bannerDesc}>
-                  {result.result
-                    ? '공개된 확률과 실제 판정이 일치합니다'
-                    : '결과가 일치하지 않습니다'}
+            {isPending ? (
+              <div className={styles.bannerFail} style={{ background: 'var(--bg-2)' }}>
+                <div className={styles.bannerIconFail}>⏳</div>
+                <div style={{ flex: 1 }}>
+                  <div className={styles.bannerTitle} style={{ color: 'var(--ink-2)' }}>
+                    VRF 대기 중
+                  </div>
+                  <div className={styles.bannerDesc}>
+                    아직 Chainlink VRF 결과를 수신하지 않았습니다.
+                  </div>
                 </div>
               </div>
-              <a
-                href={`https://sepolia.basescan.org/tx/${result.tx}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button variant="ghost" size="sm">
-                  Basescan ↗
-                </Button>
-              </a>
-            </div>
+            ) : (
+              <div className={isVerified ? styles.bannerSuccess : styles.bannerFail}>
+                <div className={isVerified ? styles.bannerIconSuccess : styles.bannerIconFail}>
+                  {isVerified ? '✓' : '✕'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className={isVerified ? styles.bannerTitle : styles.bannerTitleFail}>
+                    {isVerified ? '이상 없음' : '검증 실패'}
+                  </div>
+                  <div className={styles.bannerDesc}>
+                    {isVerified
+                      ? '공개된 확률과 실제 판정이 일치합니다'
+                      : '결과가 일치하지 않습니다'}
+                  </div>
+                </div>
+                {attempt.completedTxHash && (
+                  <a
+                    href={`https://sepolia.basescan.org/tx/${attempt.completedTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button variant="ghost" size="sm">
+                      Basescan ↗
+                    </Button>
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* 상세 정보 */}
             <div className={styles.detailGrid}>
-              {DETAIL_ROWS(result).map(({ label, value }, i, arr) => (
+              {buildDetailRows(attempt, verification).map(({ label, value }, i, arr) => (
                 <div
                   key={label}
                   className={styles.detailRow}
