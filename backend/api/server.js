@@ -38,6 +38,8 @@
  *
  *   GET /api/probability/history         ★ 확률표 변경 이력
  *
+ *   GET /api/merkle/proof                allowlist Merkle proof 발급 (프론트 강화 요청 지원)
+ *
  *  ※ 차별화 포인트 매핑
  *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
  *        → /api/stats/by-level, /api/stats/global, /api/stats/user/:address
@@ -55,6 +57,7 @@ const cors = require('cors');
 const db = require('../db/pool');
 const { summarizeLevel, rateToBp } = require('../utils/stats');
 const { verifySuccess, normalizeAddress } = require('../utils/verify');
+const merkle = require('../utils/merkle');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -356,6 +359,70 @@ app.get('/api/probability/history', async (req, res, next) => {
 
 
 // ============================================================
+//  /api/merkle/* — allowlist Merkle proof 발급
+//  (차별화 포인트는 아니지만, merkleRoot 게이트 때문에 프론트 강화 요청에 필수)
+// ============================================================
+
+/**
+ * GET /api/merkle/proof?user=0x..&itemId=123&type=0
+ *
+ *  컨트랙트 merkleRoot 가 설정돼 있어, 등록된 (user, itemId, type) 만
+ *  `requestEnhancementWithProof(itemId, type, proof)` 로 강화 가능하다.
+ *  프론트가 이 proof 를 컨트랙트에 넘기도록 발급한다.
+ *
+ *  반환
+ *  ----
+ *   200 { user, itemId, type, registered:true, leaf, proof:[...], root }
+ *   404 { error:'not_registered', ... }   ← allowlist 에 없음 (강화 불가)
+ *   400 { error:'invalid_*' }              ← 입력 형식 오류
+ *
+ *  proof 는 컨트랙트 `MerkleProof.sol` / `isValidEnhancementProof` 와 100% 호환
+ *  (utils/merkle.js 가 온체인 root 로 자가검증된 트리에서 생성).
+ */
+app.get('/api/merkle/proof', (req, res, next) => {
+  const user = normalizeAddress(req.query.user);
+  if (!user) {
+    return res.status(400).json({ error: 'invalid_address', message: 'user must match /^0x[a-fA-F0-9]{40}$/' });
+  }
+
+  if (req.query.itemId === undefined) {
+    return res.status(400).json({ error: 'missing_itemId', message: 'itemId query param required' });
+  }
+  let itemId;
+  try {
+    itemId = BigInt(req.query.itemId);
+    if (itemId < 0n) throw new Error('negative');
+  } catch {
+    return res.status(400).json({ error: 'invalid_itemId', message: 'itemId must be a non-negative integer' });
+  }
+
+  let type = 0;
+  if (req.query.type !== undefined) {
+    const t = Number(req.query.type);
+    if (!Number.isInteger(t) || t < 0 || t > 255) {
+      return res.status(400).json({ error: 'invalid_type', message: 'type must be an integer 0..255' });
+    }
+    type = t;
+  }
+
+  try {
+    const { registered, leaf, proof } = merkle.getProof(user, itemId.toString(), type);
+    const root = merkle.getRoot();
+    if (!registered) {
+      return res.status(404).json({
+        error: 'not_registered',
+        message: '해당 (user, itemId, type) 는 allowlist(merkleRoot)에 없어 강화 불가',
+        user, itemId: itemId.toString(), type, leaf, root,
+      });
+    }
+    return res.json({ user, itemId: itemId.toString(), type, registered: true, leaf, proof, root });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+
+// ============================================================
 //  공통 어댑터: attempts 행 → API 응답 형식
 // ============================================================
 function formatAttempt(row) {
@@ -397,6 +464,12 @@ app.use((err, _req, res, _next) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`[api] 서버 부팅 완료 (v3.0): http://localhost:${PORT}`);
+    try {
+      const m = merkle.getInfo();
+      console.log(`[api]   merkle allowlist: ${m.count}개 등록, root=${m.root.slice(0, 12)}…, type=${m.enhancementType}`);
+    } catch (e) {
+      console.warn('[api]   ⚠️ merkle allowlist 로드 실패 — /api/merkle/proof 비활성:', e.message);
+    }
   });
 }
 

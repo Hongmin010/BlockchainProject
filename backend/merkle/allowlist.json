@@ -1,0 +1,420 @@
+{
+  "_comment": "온체인 merkleRoot에 커밋된 등록 목록(allowlist). 인덱싱된 attempts에서 복원, 온체인 root와 일치 검증됨. entries 순서가 트리 구조를 결정하므로 변경 금지.",
+  "_howToRegenerate": "node _genallowlist.tmp.js (attempts 기반 복원). 온체인 root 변경 시 재생성 필요.",
+  "contract": "0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59",
+  "merkleRoot": "0x7195eb4ef83b6a179535865a71a276feac370e4e570e6b7639c77dcf5565a76d",
+  "enhancementType": 0,
+  "construction": {
+    "leafEncoding": "keccak256(abi.encode(address user, uint256 itemId, uint8 enhancementType))",
+    "nodeHash": "keccak256(sortedPair(a,b))  // OZ MerkleProof, a<b ? (a,b):(b,a)",
+    "oddNode": "promote  // 홀수 노드는 다음 레벨로 승격(중복 해시 안 함)",
+    "leafOrder": "entries 배열 순서 (= user_address ASC, item_id ASC)"
+  },
+  "count": 101,
+  "entries": [
+    {
+      "user": "0x76491a444fea8b6c7dc1e12a973631b99f0f1ec9",
+      "itemId": "2"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "1"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "2"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "3"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "4"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "5"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "6"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "7"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "8"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "9"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "10"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "11"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "12"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "13"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "14"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "15"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "16"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "17"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "18"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "19"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "20"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "21"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "22"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "23"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "24"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "25"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "26"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "27"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "28"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "29"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "30"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "31"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "32"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "33"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "34"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "35"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "36"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "37"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "38"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "39"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "40"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "41"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "42"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "43"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "44"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "45"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "46"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "47"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "48"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "49"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "50"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "51"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "52"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "53"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "54"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "55"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "56"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "57"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "58"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "59"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "60"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "61"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "62"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "63"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "64"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "65"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "66"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "67"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "68"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "69"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "70"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "71"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "72"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "73"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "74"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "75"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "76"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "77"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "78"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "79"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "80"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "81"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "82"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "83"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "84"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "85"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "86"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "87"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "88"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "89"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "90"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "91"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "92"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "93"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "94"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "95"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "96"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "97"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "98"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "99"
+    },
+    {
+      "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "100"
+    }
+  ]
+}
