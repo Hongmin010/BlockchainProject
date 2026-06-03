@@ -127,6 +127,25 @@ event ProbabilityTableUpdated(
 
 ---
 
+## 인덱싱하지 않는 이벤트
+
+### `MerkleRootUpdated` — allowlist root 변경 (★ 인덱싱 안 함)
+
+```solidity
+event MerkleRootUpdated(bytes32 indexed oldRoot, bytes32 indexed newRoot);
+```
+
+컨트랙트는 `setMerkleRoot` 호출 시 이 이벤트를 emit 하지만 **인덱서는 처리하지 않는다.**
+`dispatch()` 가 핸들러 없는 이벤트를 안전하게 무시하므로, 인덱서 로그에
+`핸들러 없음: MerkleRootUpdated` 가 찍히는 것은 **정상**이다 (오류 아님).
+
+강화 게이트용 allowlist proof 는 인덱싱이 아니라 `utils/merkle.js` 가 등록 목록
+(`merkle/allowlist.json`)에서 트리를 재구성해 발급한다. 계산한 root 가 온체인 `merkleRoot`
+와 일치함을 자가검증하며, allowlist 가 바뀌면(= 새 `setMerkleRoot`) `merkle/allowlist.json` 을
+재생성해야 한다. 자세한 내용은 [../README.md](../README.md) "Merkle allowlist proof 발급" 참고.
+
+---
+
 ## 인덱서 구현 시 주의사항
 
 1. **멱등성**: `attempts.attempt_id` PK + UPSERT WHERE status='pending' 조건.
