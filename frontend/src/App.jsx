@@ -1,39 +1,63 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useState } from 'react';
+import { useWallet } from './hooks/useWallet';
+import { Landing, Dashboard, Game, Records, Verify } from './pages';
 import './styles/tokens.css';
 import './styles/global.css';
-import { Landing, Dashboard, Game, Records, Verify } from './pages';
 
 export default function App() {
-  const [address, setAddress] = useState(null);
+  const wallet = useWallet();
 
-  const handleConnect = async () => {
-    if (!window.ethereum) {
-      alert('MetaMask가 설치되어 있지 않습니다.');
-      return;
-    }
-    try {
-      const [addr] = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      });
-      setAddress(addr);
-    } catch (err) {
-      console.error('지갑 연결 실패:', err);
-    }
+  const sharedProps = {
+    address: wallet.address,
+    onConnect: wallet.connect,
+    wallet,
   };
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Landing address={address} onConnect={handleConnect} />} />
-        <Route path="/game" element={<Game address={address} onConnect={handleConnect} />} />
-        <Route
-          path="/dashboard"
-          element={<Dashboard address={address} onConnect={handleConnect} />}
-        />
-        <Route path="/records" element={<Records address={address} onConnect={handleConnect} />} />
-        <Route path="/verify" element={<Verify address={address} onConnect={handleConnect} />} />
-      </Routes>
+      {/* 경고 배너 */}
+      {wallet.address && !wallet.isCorrectChain && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: 'var(--ember-500, #ff7a1a)',
+            color: '#fff',
+            textAlign: 'center',
+            padding: '10px 16px',
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+        >
+          ⚠ Base Sepolia (체인 ID 84532)에 연결해 주세요.&nbsp;
+          <button
+            onClick={wallet.switchToBaseSepolia}
+            style={{
+              background: '#fff',
+              color: 'var(--ember-500, #ff7a1a)',
+              border: 'none',
+              borderRadius: 6,
+              padding: '2px 12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            전환하기
+          </button>
+        </div>
+      )}
+      <div style={{ paddingTop: wallet.address && !wallet.isCorrectChain ? 44 : 0 }}>
+        <Routes>
+          <Route path="/" element={<Landing {...sharedProps} />} />
+          <Route path="/game" element={<Game {...sharedProps} />} />
+          <Route path="/dashboard" element={<Dashboard {...sharedProps} />} />
+          <Route path="/records" element={<Records {...sharedProps} />} />
+          <Route path="/verify" element={<Verify {...sharedProps} />} />
+        </Routes>
+      </div>
     </BrowserRouter>
   );
 }

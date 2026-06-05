@@ -1,27 +1,94 @@
+import { useEffect, useState } from 'react';
 import { Header } from '../components';
+import { fetchGlobalStats, fetchStatsByLevel, bpToPercent } from '../api/api';
 import styles from './Dashboard.module.css';
 
-// 임시로 하드코딩
-const SUMMARY = [
-  { label: '전체 강화 시도', value: '48,217', sub: 'cumulative' },
-  { label: '전체 성공률', value: '52.3%', sub: 'expected 52.1%', tone: 'success' },
-  { label: '최고 강화 단계', value: 'Lv.5', sub: 'by 0xd2…91 · 어제' },
-];
+// 상태 처리 - 로딩
+function Spinner() {
+  return (
+    <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--ink-3)', fontSize: 14 }}>
+      불러오는 중…
+    </div>
+  );
+}
 
-const BARS = [
-  ['Lv.0→1', 90, 90.1],
-  ['Lv.1→2', 70, 69.8],
-  ['Lv.2→3', 50, 50.4],
-  ['Lv.3→4', 30, 29.7],
-  ['Lv.4→5', 10, 10.2],
-];
+// 상태 처리 - 에러
+function ErrorMsg({ msg }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--fail)', fontSize: 14 }}>
+      ⚠ {msg}
+    </div>
+  );
+}
 
-const SUCCESS_RATE = 0.523;
-const SUCCESS_COUNT = 25217;
-const FAIL_COUNT = 23000;
 const CIRCUMFERENCE = 2 * Math.PI * 80;
 
-export default function Stats({ address, onConnect }) {
+export default function Dashboard({ address, onConnect }) {
+  const [globalStats, setGlobalStats] = useState(null);
+  const [levelStats, setLevelStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([fetchGlobalStats(), fetchStatsByLevel()])
+      .then(([global, byLevel]) => {
+        if (cancelled) return;
+        setLoading(false);
+        setError(null);
+        setGlobalStats(global);
+        setLevelStats(byLevel.levels);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoading(false);
+        setError(err.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 요약 카드 데이터
+  const summaryCards = globalStats
+    ? [
+        {
+          label: '전체 강화 시도',
+          value: globalStats.completedAttempts.toLocaleString(),
+          sub: 'cumulative',
+        },
+        {
+          label: '전체 성공률',
+          value: `${bpToPercent(globalStats.observedRateBp)}%`,
+          sub: `expected ~52.10%`,
+          tone: 'success',
+        },
+        {
+          label: '총 고유 유저',
+          value: globalStats.uniqueUsers.toLocaleString(),
+          sub: `VRF 평균 대기 ${globalStats.avgVrfLatencySec?.toFixed(1) ?? '—'}s`,
+        },
+      ]
+    : [];
+
+  // 도넛 차트 값
+  const successRate = globalStats ? globalStats.successes / globalStats.completedAttempts : 0;
+  const successCount = globalStats?.successes ?? 0;
+  const failCount = globalStats ? globalStats.completedAttempts - globalStats.successes : 0;
+  const successPct = globalStats ? bpToPercent(globalStats.observedRateBp) : '—';
+
+  // 막대 차트 데이터
+  const LEVEL_LABELS = ['Lv.0→1', 'Lv.1→2', 'Lv.2→3', 'Lv.3→4', 'Lv.4→5'];
+  const bars = levelStats
+    ? levelStats.map((lv, i) => [
+        LEVEL_LABELS[i] ?? `Lv.${lv.beforeLevel}→${lv.beforeLevel + 1}`,
+        lv.declaredRateBp / 100, // % 환산
+        lv.observedRateBp / 100,
+      ])
+    : [];
+
   return (
     <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
@@ -34,146 +101,166 @@ export default function Stats({ address, onConnect }) {
           </span>
         </div>
 
-        {/* ── 요약 카드 ── */}
-        <div className={styles.summaryGrid}>
-          {SUMMARY.map(({ label, value, sub, tone }) => (
-            <div key={label} className={styles.summaryCard}>
-              <div className="cf-cap">{label}</div>
-              <div
-                className={styles.summaryValue}
-                style={{ color: tone === 'success' ? 'var(--success)' : 'var(--ink-1)' }}
-              >
-                {value}
-              </div>
-              <div className={styles.summarySub}>{sub}</div>
-            </div>
-          ))}
-        </div>
+        {loading && <Spinner />}
+        {!loading && error && <ErrorMsg msg={error} />}
 
-        {/* ── 차트 영역 ── */}
-        <div className={styles.chartGrid}>
-          {/* 막대 차트 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <h3 className={styles.cardTitle}>단계별 성공률</h3>
-                <div className="cf-cap" style={{ marginTop: 4 }}>
-                  공개 확률 vs 실제 결과
-                </div>
-              </div>
-              <div className={styles.legend}>
-                <span className={styles.legendItem}>
-                  <span className={styles.legendDotGray} />
-                  <span style={{ color: 'var(--ink-2)' }}>공개 확률</span>
-                </span>
-                <span className={styles.legendItem}>
-                  <span className={styles.legendDotEmber} />
-                  <span style={{ color: 'var(--ink-2)' }}>실제 결과</span>
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.barChart}>
-              {BARS.map(([label, expected, actual]) => (
-                <div key={label} className={styles.barGroup}>
-                  <div className={styles.bars}>
-                    <div className={styles.barExpected} style={{ height: `${expected}%` }} />
-                    <div className={styles.barActual} style={{ height: `${actual}%` }} />
+        {!loading && !error && (
+          <>
+            {/* ── 요약 카드 ── */}
+            <div className={styles.summaryGrid}>
+              {summaryCards.map(({ label, value, sub, tone }) => (
+                <div key={label} className={styles.summaryCard}>
+                  <div className="cf-cap">{label}</div>
+                  <div
+                    className={styles.summaryValue}
+                    style={{ color: tone === 'success' ? 'var(--success)' : 'var(--ink-1)' }}
+                  >
+                    {value}
                   </div>
-                  <div className={styles.barLabel}>{label}</div>
+                  <div className={styles.summarySub}>{sub}</div>
                 </div>
               ))}
             </div>
 
-            <div className={styles.verifyNote}>
-              <span style={{ color: 'var(--success)' }}>✓</span>
-              <span>
-                모든 단계에서 실제 결과가 공개 확률 ±1% 이내 —{' '}
-                <strong style={{ color: 'var(--success)' }}>이상 없음</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* 도넛 차트 */}
-          <div className={styles.card}>
-            <div style={{ marginBottom: 18 }}>
-              <h3 className={styles.cardTitle}>성공 vs 실패</h3>
-              <div className="cf-cap" style={{ marginTop: 4 }}>
-                전체 누적
-              </div>
-            </div>
-
-            <div className={styles.donutWrap}>
-              <svg width="220" height="220" viewBox="0 0 220 220">
-                <defs>
-                  <linearGradient id="emberGrad" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#ffa85f" />
-                    <stop offset="100%" stopColor="#ff7a1a" />
-                  </linearGradient>
-                </defs>
-                <circle
-                  cx="110"
-                  cy="110"
-                  r="80"
-                  fill="none"
-                  stroke="var(--bg-3)"
-                  strokeWidth="32"
-                />
-                <circle
-                  cx="110"
-                  cy="110"
-                  r="80"
-                  fill="none"
-                  stroke="url(#emberGrad)"
-                  strokeWidth="32"
-                  strokeLinecap="round"
-                  strokeDasharray={`${SUCCESS_RATE * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
-                  transform="rotate(-90 110 110)"
-                  style={{ filter: 'drop-shadow(0 0 8px rgba(255,122,26,0.4))' }}
-                />
-                <text
-                  x="110"
-                  y="106"
-                  textAnchor="middle"
-                  fontFamily="var(--font)"
-                  fontWeight="800"
-                  fontSize="32"
-                  fill="var(--ink-1)"
-                  letterSpacing="-0.03em"
-                >
-                  52.3%
-                </text>
-                <text
-                  x="110"
-                  y="128"
-                  textAnchor="middle"
-                  fontFamily="var(--mono)"
-                  fontSize="10"
-                  fill="var(--ink-3)"
-                  letterSpacing="0.1em"
-                >
-                  SUCCESS
-                </text>
-              </svg>
-            </div>
-
-            <div className={styles.donutLegend}>
-              <div className={styles.donutLegendItem}>
-                <div className="cf-cap" style={{ color: 'var(--success)' }}>
-                  ● 성공
+            {/* ── 차트 영역 ── */}
+            <div className={styles.chartGrid}>
+              {/* 막대 차트 */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>단계별 성공률</h3>
+                    <div className="cf-cap" style={{ marginTop: 4 }}>
+                      공개 확률 vs 실제 결과
+                    </div>
+                  </div>
+                  <div className={styles.legend}>
+                    <span className={styles.legendItem}>
+                      <span className={styles.legendDotGray} />
+                      <span style={{ color: 'var(--ink-2)' }}>공개 확률</span>
+                    </span>
+                    <span className={styles.legendItem}>
+                      <span className={styles.legendDotEmber} />
+                      <span style={{ color: 'var(--ink-2)' }}>실제 결과</span>
+                    </span>
+                  </div>
                 </div>
-                <div className={styles.donutLegendValue}>{SUCCESS_COUNT.toLocaleString()}</div>
-              </div>
-              <div className={styles.donutDivider} />
-              <div className={styles.donutLegendItem}>
-                <div className="cf-cap" style={{ color: 'var(--fail)' }}>
-                  ● 실패
+
+                <div className={styles.barChart}>
+                  {bars.map(([label, expected, actual]) => (
+                    <div key={label} className={styles.barGroup}>
+                      <div className={styles.bars}>
+                        <div className={styles.barExpected} style={{ height: `${expected}%` }} />
+                        <div className={styles.barActual} style={{ height: `${actual}%` }} />
+                      </div>
+                      <div className={styles.barLabel}>{label}</div>
+                    </div>
+                  ))}
                 </div>
-                <div className={styles.donutLegendValue}>{FAIL_COUNT.toLocaleString()}</div>
+
+                {/* 공정성 요약 */}
+                {levelStats &&
+                  (() => {
+                    const suspicious = levelStats.some((lv) => lv.fairnessVerdict === 'suspicious');
+                    return (
+                      <div className={styles.verifyNote}>
+                        <span style={{ color: suspicious ? 'var(--fail)' : 'var(--success)' }}>
+                          {suspicious ? '⚠' : '✓'}
+                        </span>
+                        <span>
+                          {suspicious
+                            ? '일부 단계에서 통계적 이상이 감지되었습니다'
+                            : '모든 단계에서 실제 결과가 공개 확률 범위 이내 — '}
+                          {!suspicious && (
+                            <strong style={{ color: 'var(--success)' }}>이상 없음</strong>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })()}
+              </div>
+
+              {/* 도넛 차트 */}
+              <div className={styles.card}>
+                <div style={{ marginBottom: 18 }}>
+                  <h3 className={styles.cardTitle}>성공 vs 실패</h3>
+                  <div className="cf-cap" style={{ marginTop: 4 }}>
+                    전체 누적
+                  </div>
+                </div>
+
+                <div className={styles.donutWrap}>
+                  <svg width="220" height="220" viewBox="0 0 220 220">
+                    <defs>
+                      <linearGradient id="emberGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor="#ffa85f" />
+                        <stop offset="100%" stopColor="#ff7a1a" />
+                      </linearGradient>
+                    </defs>
+                    <circle
+                      cx="110"
+                      cy="110"
+                      r="80"
+                      fill="none"
+                      stroke="var(--bg-3)"
+                      strokeWidth="32"
+                    />
+                    <circle
+                      cx="110"
+                      cy="110"
+                      r="80"
+                      fill="none"
+                      stroke="url(#emberGrad)"
+                      strokeWidth="32"
+                      strokeLinecap="round"
+                      strokeDasharray={`${successRate * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
+                      transform="rotate(-90 110 110)"
+                      style={{ filter: 'drop-shadow(0 0 8px rgba(255,122,26,0.4))' }}
+                    />
+                    <text
+                      x="110"
+                      y="106"
+                      textAnchor="middle"
+                      fontFamily="var(--font)"
+                      fontWeight="800"
+                      fontSize="32"
+                      fill="var(--ink-1)"
+                      letterSpacing="-0.03em"
+                    >
+                      {successPct}%
+                    </text>
+                    <text
+                      x="110"
+                      y="128"
+                      textAnchor="middle"
+                      fontFamily="var(--mono)"
+                      fontSize="10"
+                      fill="var(--ink-3)"
+                      letterSpacing="0.1em"
+                    >
+                      SUCCESS
+                    </text>
+                  </svg>
+                </div>
+
+                <div className={styles.donutLegend}>
+                  <div className={styles.donutLegendItem}>
+                    <div className="cf-cap" style={{ color: 'var(--success)' }}>
+                      ● 성공
+                    </div>
+                    <div className={styles.donutLegendValue}>{successCount.toLocaleString()}</div>
+                  </div>
+                  <div className={styles.donutDivider} />
+                  <div className={styles.donutLegendItem}>
+                    <div className="cf-cap" style={{ color: 'var(--fail)' }}>
+                      ● 실패
+                    </div>
+                    <div className={styles.donutLegendValue}>{failCount.toLocaleString()}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
