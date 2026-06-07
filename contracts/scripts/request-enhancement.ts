@@ -35,8 +35,6 @@ async function main() {
 
   const pendingAttemptId = await game.getPendingAttemptId(signer.address, 1);
   console.log("Pending attemptId:", pendingAttemptId.toString());
-
-  console.log("이제 VRF callback을 기다린 뒤 Etherscan Events 탭을 확인하면 됨.");
 }
 
 main().catch((error) => {
