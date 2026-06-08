@@ -35,6 +35,7 @@ contracts/typechain/
 contracts/typechain-types/
 contracts/coverage/
 contracts/coverage.json
+contracts/merkle-claims*.json
 
 # Hardhat Ignition local deployment cache
 contracts/ignition/deployments/
