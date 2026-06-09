@@ -13,6 +13,9 @@
 # Hardhat compilation (v2) support directory
 /cache
 
+# VRF address
+/ignition/parameters
+
 # Typechain output
 /types
 
