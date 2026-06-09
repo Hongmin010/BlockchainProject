@@ -21,7 +21,7 @@ const DEFAULT_PROB_TABLE = [
   { stage: 'Lv.4 → Lv.5', prob: 10 },
 ];
 
-const CAT_EMOJIS = ['🐱', '😺', '😸', '🙀', '😻'];
+const CAT_EMOJIS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
 // 아이템 ID는 1번으로 고정 (추후 선택 UI 확장 가능)
 const ITEM_ID = 1;
