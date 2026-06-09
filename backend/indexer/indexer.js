@@ -79,14 +79,20 @@ const db = require('../db/pool');
 //  - 파일: backend/abi/EnhancementGameVRF.json
 //  - `{ abi: [...] }` 또는 `[...]` 두 형식 모두 대응
 // ------------------------------------------------------------
-const abiJson = require('../abi/EnhancementGameVRF.json');
-const ABI = abiJson.abi || abiJson;
+const baseAbiJson = require('../abi/EnhancementGameVRF.json');
+const BASE_ABI = baseAbiJson.abi || baseAbiJson;
+
+// v4: 고급강화 컨트랙트 ABI (별도 배포본, base 를 참조)
+const advAbiJson = require('../abi/AdvancedEnhancementGameVRF.json');
+const ADV_ABI = advAbiJson.abi || advAbiJson;
 
 // ------------------------------------------------------------
 //  환경변수 및 상수
 // ------------------------------------------------------------
 const RPC_URL = process.env.RPC_URL;
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+// v4: 고급강화 컨트랙트 주소 (미설정 시 base 만 구독 — 하위호환)
+const ADVANCED_CONTRACT_ADDRESS = process.env.ADVANCED_CONTRACT_ADDRESS;
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 12_000);
 const BATCH_SIZE = Number(process.env.BATCH_SIZE || 1_000);
 const CONFIRMATION_BLOCKS = Number(process.env.CONFIRMATION_BLOCKS || 5);
@@ -109,10 +115,17 @@ const CURSOR_ID = 'main';
 //  ];
 // ------------------------------------------------------------
 
-const EVENT_HANDLERS = {
+const BASE_HANDLERS = {
   EnhancementRequested: handleEnhancementRequested,
   EnhancementResult: handleEnhancementResult,
   ProbabilityTableUpdated: handleProbabilityTableUpdated,
+};
+
+// v4: 고급강화 컨트랙트 이벤트 핸들러
+const ADVANCED_HANDLERS = {
+  AdvancedEnhancementRequested: handleAdvancedEnhancementRequested,
+  AdvancedEnhancementResult: handleAdvancedEnhancementResult,
+  AdvancedRateUpdated: handleAdvancedRateUpdated,
 };
 
 
@@ -120,9 +133,10 @@ const EVENT_HANDLERS = {
 //  메인 루프
 // ============================================================
 async function main() {
-  console.log('[indexer] 부팅 (v3 — 배포본 일치화)');
+  console.log('[indexer] 부팅 (v4 — base + 고급강화)');
   console.log('[indexer]   RPC          :', RPC_URL);
-  console.log('[indexer]   CONTRACT     :', CONTRACT_ADDRESS);
+  console.log('[indexer]   BASE         :', CONTRACT_ADDRESS);
+  console.log('[indexer]   ADVANCED     :', ADVANCED_CONTRACT_ADDRESS || '(미설정 — base 만 구독)');
   console.log('[indexer]   BATCH_SIZE   :', BATCH_SIZE);
   console.log('[indexer]   CONFIRM_BLKS :', CONFIRMATION_BLOCKS);
 
@@ -130,12 +144,21 @@ async function main() {
   if (!CONTRACT_ADDRESS) throw new Error('CONTRACT_ADDRESS not set — check backend/.env');
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const iface = new ethers.Interface(ABI);
+
+  // 구독할 컨트랙트 소스. 주소가 없는 소스는 자동 제외(하위호환).
+  // 컨트랙트마다 ABI 가 다르므로 iface 도 소스별로 둔다.
+  const sources = [
+    { name: 'base',     address: CONTRACT_ADDRESS,          iface: new ethers.Interface(BASE_ABI), handlers: BASE_HANDLERS },
+    { name: 'advanced', address: ADVANCED_CONTRACT_ADDRESS, iface: new ethers.Interface(ADV_ABI),  handlers: ADVANCED_HANDLERS },
+  ].filter((s) => s.address);
+
+  // log.address(소문자) → source 빠른 조회용
+  const sourceByAddress = new Map(sources.map((s) => [s.address.toLowerCase(), s]));
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      await tick(provider, iface);
+      await tick(provider, sources, sourceByAddress);
     } catch (err) {
       console.error('[indexer] tick 오류:', err);
     }
@@ -148,7 +171,7 @@ async function main() {
  * 한 사이클: cursor 부터 (latest - CONFIRMATION_BLOCKS) 까지
  * BATCH_SIZE 단위로 끊어 처리.
  */
-async function tick(provider, iface) {
+async function tick(provider, sources, sourceByAddress) {
   const latest = await provider.getBlockNumber();
   const safeHead = latest - CONFIRMATION_BLOCKS;
 
@@ -158,18 +181,21 @@ async function tick(provider, iface) {
   // block.timestamp 캐시 (한 tick 내에서만 유효)
   const blockTsCache = new Map();
 
+  // 두 컨트랙트를 한 번의 getLogs 로 동시 구독 (ethers 는 address 배열 지원)
+  const addresses = sources.map((s) => s.address);
+
   while (from <= safeHead) {
     const to = Math.min(from + BATCH_SIZE - 1, safeHead);
     console.log(`[indexer] 처리 범위: ${from} → ${to} (safeHead=${safeHead})`);
 
     const logs = await provider.getLogs({
-      address: CONTRACT_ADDRESS,
+      address: addresses,
       fromBlock: from,
       toBlock: to,
     });
 
     for (const log of logs) {
-      await dispatch(iface, log, provider, blockTsCache);
+      await dispatch(sourceByAddress, log, provider, blockTsCache);
     }
 
     await saveCursor(to);
@@ -181,18 +207,22 @@ async function tick(provider, iface) {
 /**
  * 단일 로그 디코딩 + 핸들러 분기. ABI 에 없는 이벤트는 무시.
  */
-async function dispatch(iface, log, provider, blockTsCache) {
+async function dispatch(sourceByAddress, log, provider, blockTsCache) {
+  // 어느 컨트랙트에서 온 로그인지 판별 → 그 소스의 iface/handlers 사용
+  const source = sourceByAddress.get(log.address.toLowerCase());
+  if (!source) return;   // 구독 대상 외 주소 (방어)
+
   let parsed;
   try {
-    parsed = iface.parseLog({ topics: log.topics, data: log.data });
+    parsed = source.iface.parseLog({ topics: log.topics, data: log.data });
   } catch {
     return;   // 알 수 없는 이벤트는 안전하게 무시
   }
   if (!parsed) return;
 
-  const handler = EVENT_HANDLERS[parsed.name];
+  const handler = source.handlers[parsed.name];
   if (!handler) {
-    console.warn('[indexer] 핸들러 없음:', parsed.name);
+    console.warn(`[indexer] 핸들러 없음: ${source.name}.${parsed.name}`);
     return;
   }
 
@@ -358,6 +388,180 @@ async function handleProbabilityTableUpdated(args, meta) {
 
 
 // ============================================================
+//  고급강화(상급) 이벤트 핸들러 — v4
+//  대상: AdvancedEnhancementGameVRF (base 를 참조하는 별도 컨트랙트)
+// ============================================================
+
+/**
+ * (A) AdvancedEnhancementRequested → advanced_attempts UPSERT (status='pending')
+ *
+ *  args: { attemptId, user, itemId, vrfRequestId, mode,
+ *          beforeExtraLevel, beforeTotalLevel, beforeSafeDropStreak, guaranteed }
+ *
+ *  base Requested 와 동일하게, Result 가 먼저 도착했을 수 있어 충돌 시
+ *  requested_* 및 before_* 메타만 COALESCE 로 채운다.
+ *  ※ Guaranteed 는 Requested+Result 가 같은 tx 에서 동시 emit (vrfRequestId=0).
+ */
+async function handleAdvancedEnhancementRequested(args, meta) {
+  await db.query(`
+    INSERT INTO advanced_attempts
+      (attempt_id, user_address, item_id, mode,
+       before_extra_level, before_total_level, before_safe_drop_streak, guaranteed,
+       vrf_request_id, status,
+       requested_tx_hash, requested_log_index, requested_block, requested_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11, $12, $13)
+    ON CONFLICT (attempt_id) DO UPDATE
+      SET mode                    = COALESCE(advanced_attempts.mode, EXCLUDED.mode),
+          before_extra_level      = COALESCE(advanced_attempts.before_extra_level, EXCLUDED.before_extra_level),
+          before_total_level      = COALESCE(advanced_attempts.before_total_level, EXCLUDED.before_total_level),
+          before_safe_drop_streak = COALESCE(advanced_attempts.before_safe_drop_streak, EXCLUDED.before_safe_drop_streak),
+          guaranteed              = COALESCE(advanced_attempts.guaranteed, EXCLUDED.guaranteed),
+          vrf_request_id          = COALESCE(advanced_attempts.vrf_request_id, EXCLUDED.vrf_request_id),
+          requested_tx_hash       = COALESCE(advanced_attempts.requested_tx_hash, EXCLUDED.requested_tx_hash),
+          requested_log_index     = COALESCE(advanced_attempts.requested_log_index, EXCLUDED.requested_log_index),
+          requested_block         = COALESCE(advanced_attempts.requested_block, EXCLUDED.requested_block),
+          requested_at            = COALESCE(advanced_attempts.requested_at, EXCLUDED.requested_at),
+          updated_at              = NOW()
+  `, [
+    args.attemptId.toString(),
+    args.user.toLowerCase(),
+    args.itemId.toString(),
+    Number(args.mode),
+    Number(args.beforeExtraLevel),
+    Number(args.beforeTotalLevel),
+    Number(args.beforeSafeDropStreak),
+    Boolean(args.guaranteed),
+    args.vrfRequestId.toString(),
+    meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
+  ]);
+}
+
+
+/**
+ * (B) AdvancedEnhancementResult → advanced_attempts UPSERT + user_items 갱신 (★ 한 트랜잭션)
+ *
+ *  args: { attemptId, user, itemId, vrfRequestId, mode,
+ *          beforeExtraLevel, afterExtraLevel, beforeTotalLevel, afterTotalLevel,
+ *          resultType, beforeSafeDropStreak, afterSafeDropStreak, guaranteed,
+ *          successRateBps, destroyRateBps, randomValue, rollBps }
+ *
+ *  멱등성: WHERE status='pending' 가드 → 이미 'completed' 면 SKIP(user_items 중복 갱신 방지).
+ *  user_items: base 가 관리하는 level/total_attempts 는 건드리지 않고 extra_level 만 갱신.
+ *              (total_level 은 generated 라 자동 재계산)
+ */
+async function handleAdvancedEnhancementResult(args, meta) {
+  await db.withTransaction(async (tx) => {
+    const attemptId = args.attemptId.toString();
+    const user = args.user.toLowerCase();
+    const itemId = args.itemId.toString();
+    const afterExtraLevel = Number(args.afterExtraLevel);
+    const afterTotalLevel = Number(args.afterTotalLevel);
+
+    // 1) advanced_attempts UPSERT (completed)
+    const upsert = await tx.query(`
+      INSERT INTO advanced_attempts
+        (attempt_id, user_address, item_id, mode,
+         before_extra_level, after_extra_level, before_total_level, after_total_level,
+         result_type, before_safe_drop_streak, after_safe_drop_streak, guaranteed,
+         success_rate_bps, destroy_rate_bps, random_value, roll_bps,
+         vrf_request_id, status,
+         completed_tx_hash, completed_log_index, completed_block, completed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'completed',$18,$19,$20,$21)
+      ON CONFLICT (attempt_id) DO UPDATE
+        SET mode                    = EXCLUDED.mode,
+            before_extra_level      = EXCLUDED.before_extra_level,
+            after_extra_level       = EXCLUDED.after_extra_level,
+            before_total_level      = EXCLUDED.before_total_level,
+            after_total_level       = EXCLUDED.after_total_level,
+            result_type             = EXCLUDED.result_type,
+            before_safe_drop_streak = EXCLUDED.before_safe_drop_streak,
+            after_safe_drop_streak  = EXCLUDED.after_safe_drop_streak,
+            guaranteed              = EXCLUDED.guaranteed,
+            success_rate_bps        = EXCLUDED.success_rate_bps,
+            destroy_rate_bps        = EXCLUDED.destroy_rate_bps,
+            random_value            = EXCLUDED.random_value,
+            roll_bps                = EXCLUDED.roll_bps,
+            vrf_request_id          = COALESCE(advanced_attempts.vrf_request_id, EXCLUDED.vrf_request_id),
+            status                  = 'completed',
+            completed_tx_hash       = EXCLUDED.completed_tx_hash,
+            completed_log_index     = EXCLUDED.completed_log_index,
+            completed_block         = EXCLUDED.completed_block,
+            completed_at            = EXCLUDED.completed_at,
+            updated_at              = NOW()
+        WHERE advanced_attempts.status = 'pending'
+      RETURNING attempt_id
+    `, [
+      attemptId, user, itemId, Number(args.mode),
+      Number(args.beforeExtraLevel), afterExtraLevel,
+      Number(args.beforeTotalLevel), afterTotalLevel,
+      Number(args.resultType), Number(args.beforeSafeDropStreak), Number(args.afterSafeDropStreak),
+      Boolean(args.guaranteed),
+      Number(args.successRateBps), Number(args.destroyRateBps),
+      args.randomValue.toString(), Number(args.rollBps),
+      args.vrfRequestId.toString(),
+      meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
+    ]);
+
+    if (upsert.rowCount === 0) {
+      // 이미 처리된 Result — user_items 갱신 SKIP
+      return;
+    }
+
+    // 2) user_items 의 extra_level 갱신 (level/total_attempts 는 base 전용)
+    //    행이 없을 때만 INSERT (base level = afterTotalLevel - afterExtraLevel = 5)
+    const baseLevel = afterTotalLevel - afterExtraLevel;
+    await tx.query(`
+      INSERT INTO user_items
+        (user_address, item_id, level, extra_level, total_attempts,
+         last_tx_hash, last_log_index, last_block, last_updated_at)
+      VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8)
+      ON CONFLICT (user_address, item_id) DO UPDATE
+        SET extra_level     = EXCLUDED.extra_level,
+            last_tx_hash    = EXCLUDED.last_tx_hash,
+            last_log_index  = EXCLUDED.last_log_index,
+            last_block      = EXCLUDED.last_block,
+            last_updated_at = EXCLUDED.last_updated_at,
+            updated_at      = NOW()
+        -- reorg-safe: 이미 더 큰 block 의 갱신이 있으면 덮어쓰지 않음
+        WHERE user_items.last_block <= EXCLUDED.last_block
+    `, [
+      user, itemId, baseLevel, afterExtraLevel,
+      meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
+    ]);
+  });
+}
+
+
+/**
+ * (C) AdvancedRateUpdated → advanced_rate_history INSERT
+ *
+ *  args: { updater, mode, extraLevel,
+ *          oldSuccessRateBps, newSuccessRateBps, oldDestroyRateBps, newDestroyRateBps }
+ *  on_chain_timestamp 은 이벤트에 없음 → meta.blockTimestamp 사용.
+ */
+async function handleAdvancedRateUpdated(args, meta) {
+  await db.query(`
+    INSERT INTO advanced_rate_history
+      (updater, mode, extra_level,
+       old_success_rate, new_success_rate, old_destroy_rate, new_destroy_rate,
+       on_chain_timestamp, tx_hash, log_index, block_number)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT (tx_hash, log_index) DO NOTHING
+  `, [
+    args.updater.toLowerCase(),
+    Number(args.mode),
+    Number(args.extraLevel),
+    Number(args.oldSuccessRateBps),
+    Number(args.newSuccessRateBps),
+    Number(args.oldDestroyRateBps),
+    Number(args.newDestroyRateBps),
+    meta.blockTimestamp,
+    meta.txHash, meta.logIndex, meta.blockNumber,
+  ]);
+}
+
+
+// ============================================================
 //  cursor 헬퍼
 // ============================================================
 async function loadCursor() {
@@ -407,6 +611,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  ABI,
-  handlers: EVENT_HANDLERS,
+  BASE_ABI,
+  ADV_ABI,
+  baseHandlers: BASE_HANDLERS,
+  advancedHandlers: ADVANCED_HANDLERS,
 };

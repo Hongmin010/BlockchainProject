@@ -39,15 +39,18 @@ backend/
 ├── indexer/            # 온체인 이벤트 인덱서 (체인 → DB 동기화)
 │   └── indexer.js      #   3개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
 ├── api/                # REST API 서버 (DB → 클라이언트)
-│   └── server.js       #   7개 라우트 (/health + /api/*)
+│   └── server.js       #   8개 라우트 (/health + /api/*)
 ├── db/                 # PostgreSQL 스키마 + 연결 풀
 │   ├── schema.sql      #   4개 테이블 + 11개 인덱스 (v3 정렬)
 │   └── pool.js         #   lazy 싱글턴 풀 + withTransaction 헬퍼 (SSL 자동 분기)
 ├── utils/              # 순수 함수 모음 (단위 테스트 대상)
 │   ├── stats.js        #   Wilson CI · 카이제곱 · fairnessVerdict
-│   └── verify.js       #   VRF off-chain 재검증 · 주소 정규화
+│   ├── verify.js       #   VRF off-chain 재검증 · 주소 정규화
+│   └── merkle.js       #   Merkle proof 발급 (allowlist 트리 재구성)
 ├── abi/                # 배포본 ABI
 │   └── EnhancementGameVRF.json
+├── merkle/             # allowlist (Merkle proof 발급용)
+│   └── allowlist.json  #   등록 목록 복원본 (온체인 root 와 일치 검증)
 ├── docs/               # 문서
 │   ├── events.md       #   ★ 컨트랙트 팀과 합의된 3개 이벤트 명세 (v3)
 │   └── design_decisions.md  # ★ 설계 결정 기록
@@ -85,6 +88,20 @@ backend/
 
 → 엔드포인트: `GET /api/probability/history?level=<n>`
 
+## Merkle allowlist proof 발급 (강화 게이트 대응)
+
+차별화 포인트는 아니지만, 배포본의 `merkleRoot` 게이트 때문에 프론트 강화 요청에 필수다.
+등록된 `(user, itemId, enhancementType)` 조합만 `requestEnhancementWithProof(itemId, type, proof)` 로
+강화할 수 있고, 이 proof 를 백엔드가 발급한다.
+
+- **leaf** = `keccak256(abi.encode(user, itemId, type))` — 컨트랙트 `getEnhancementLeaf` 와 동일
+- **트리** = OZ 표준 정렬-쌍 keccak256, 홀수 노드 promote — 컨트랙트 `MerkleProof.sol` 과 100% 호환
+- **등록 목록**은 `merkle/allowlist.json` 에 보관. 인덱싱된 강화 이력에서 복원했으며,
+  계산한 root 가 온체인 `merkleRoot` 와 일치함을 모듈 로드 시 자가검증한다(불일치 시 부팅 경고).
+- 발급한 proof 는 온체인 `isValidEnhancementProof` 로 검증 완료.
+
+→ 엔드포인트: `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` (미등록 조합은 404)
+
 ## 처리하는 이벤트 (총 3개)
 
 자세한 시그니처와 자료형 근거는 [docs/events.md](docs/events.md), 통합 결정 근거는 [docs/design_decisions.md](docs/design_decisions.md) 참고.
@@ -111,8 +128,9 @@ base URL — 로컬 `http://localhost:3000`, 클라우드 `https://<render-servi
 | `GET /api/attempts/recent` `[?user=<addr>]` | 최근 시도 목록 (user 지정 시 해당 유저만 — "내 기록"용) | Dashboard / Records |
 | `GET /api/attempts/:attemptId` ★ | 시도 1건 상세 + VRF 재검증 | Verify |
 | `GET /api/probability/history?level=<n>` ★ | 확률표 변경 이력 | Dashboard |
+| `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` | allowlist Merkle proof 발급 (강화 요청용) | Game (강화) |
 
-> **프론트엔드 안내:** 프론트는 Supabase 에 직접 접근하지 않는다. 위 REST API 만 호출한다(백엔드가 게이트키퍼). 단, **"강화 시도"(Game 페이지)는 백엔드가 아니라 지갑으로 컨트랙트에 직접 트랜잭션을 보내는 동작**이다 — 백엔드는 읽기 전용 검증만 담당한다.
+> **프론트엔드 안내:** 프론트는 Supabase 에 직접 접근하지 않는다. 위 REST API 만 호출한다(백엔드가 게이트키퍼). 단, **"강화 시도"(Game 페이지)는 백엔드가 아니라 지갑으로 컨트랙트에 직접 트랜잭션을 보내는 동작**이다 — 백엔드는 읽기 전용 검증 + 강화에 필요한 Merkle proof 발급(`/api/merkle/proof`)을 담당한다. (컨트랙트 `merkleRoot` 게이트 때문에 **등록된 `(user, itemId, type)` 만** 강화 가능 — 미등록 지갑/아이템은 proof 가 안 나온다.)
 
 ## 실행 방법 (로컬)
 

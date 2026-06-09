@@ -1,5 +1,5 @@
 -- ============================================================
---  KHU 블록체인 프로젝트 — PostgreSQL 스키마 (v3 — 배포본 일치화)
+--  KHU 블록체인 프로젝트 — PostgreSQL 스키마 (v4 — v3 배포본 정렬 + 고급강화 반영)
 -- ============================================================
 --
 --  변경 요약 (v2 → v3)
@@ -125,8 +125,14 @@ CREATE TABLE IF NOT EXISTS user_items (
   user_address            VARCHAR(42)    NOT NULL,
   item_id                 NUMERIC(78, 0) NOT NULL,
 
-  -- 갱신 후 단계 (uint8)
+  -- 갱신 후 단계 (uint8) — base 강화 단계 0~5
   level                   SMALLINT       NOT NULL,
+
+  -- 상급강화 단계 (extraLevel 0~5). AdvancedEnhancement 가 갱신. (v4)
+  extra_level             SMALLINT       NOT NULL DEFAULT 0,
+
+  -- 총 단계 = base + extra (5~10). 자동 계산·저장. (v4)
+  total_level             SMALLINT       GENERATED ALWAYS AS (level + extra_level) STORED,
 
   -- 누적 강화 시도 횟수 (백엔드가 +1)
   total_attempts          NUMERIC(78, 0) NOT NULL,
@@ -145,6 +151,9 @@ CREATE TABLE IF NOT EXISTS user_items (
 
 CREATE INDEX IF NOT EXISTS idx_user_items_item
   ON user_items (item_id);
+-- 랭킹(T7): 총 레벨 내림차순 (v4)
+CREATE INDEX IF NOT EXISTS idx_user_items_total_level
+  ON user_items (total_level DESC);
 
 
 -- ------------------------------------------------------------
@@ -201,3 +210,115 @@ CREATE TABLE IF NOT EXISTS indexer_cursor (
 INSERT INTO indexer_cursor (id, last_block)
 VALUES ('main', 0)
 ON CONFLICT (id) DO NOTHING;
+
+
+-- ============================================================
+--  v4 — 고급강화(상급) : AdvancedEnhancementGameVRF (0x4f1c…)
+--  base(0x73e8) 를 baseGame 으로 참조하는 별도 컨트랙트. base 5강 → 5~10강.
+--  (기존 DB 는 db/migrations/002_advanced_enhancement.sql 로 적용)
+-- ============================================================
+
+-- ------------------------------------------------------------
+--  advanced_attempts : 상급강화 시도 (VRF 라이프사이클 통합)
+-- ------------------------------------------------------------
+--  AdvancedEnhancementRequested → INSERT(pending),
+--  AdvancedEnhancementResult    → UPDATE(completed).
+--  결과 5종(0 FailKeep/1 Success/2 SafeDowngrade/3 Destroyed/4 Guaranteed)
+--  이라 base attempts(success BOOLEAN) 와 별도 테이블.
+--  Guaranteed 는 VRF 없이 즉시 → vrf_request_id=0, random_value=0, roll_bps=0.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS advanced_attempts (
+  attempt_id               NUMERIC(78,0) PRIMARY KEY,
+  user_address             VARCHAR(42)   NOT NULL,
+  item_id                  NUMERIC(78,0) NOT NULL,
+
+  -- 0=Safe, 1=Risky
+  mode                     SMALLINT      NOT NULL,
+
+  -- 상급 단계 (extraLevel 0~5). before 는 Requested/Result 공통, after 는 Result.
+  before_extra_level       SMALLINT,
+  after_extra_level        SMALLINT,
+
+  -- 총 단계 (5~10) — 컨트랙트가 base+extra 를 직접 emit.
+  before_total_level       SMALLINT,
+  after_total_level        SMALLINT,
+
+  -- 결과: 0 FailKeep / 1 Success / 2 SafeDowngrade / 3 Destroyed / 4 Guaranteed (NULL=pending)
+  result_type              SMALLINT,
+
+  -- 연속 하락 횟수 (동적확률 검증 입력). Safe 2연속 하락 시 보장 발동.
+  before_safe_drop_streak  SMALLINT,
+  after_safe_drop_streak   SMALLINT,
+
+  -- 보장 성공 여부 (Safe streak>=2 → TRUE, VRF 없이 즉시 확정)
+  guaranteed               BOOLEAN,
+
+  -- 적용된 확률 밴드 (uint16 bp). Safe 는 destroy=0.
+  success_rate_bps         INTEGER,
+  destroy_rate_bps         INTEGER,
+
+  -- VRF 난수 / roll (재검증 차별화 #2). guaranteed 면 둘 다 0.
+  random_value             NUMERIC(78,0),
+  roll_bps                 INTEGER,
+
+  -- Chainlink VRF 요청 ID. guaranteed 면 0.
+  vrf_request_id           NUMERIC(78,0) NOT NULL,
+
+  status                   VARCHAR(20)   NOT NULL DEFAULT 'pending'
+                           CHECK (status IN ('pending','completed')),
+
+  -- Requested 이벤트 메타 (Result 먼저 도착 시 NULL 가능)
+  requested_tx_hash        VARCHAR(66),
+  requested_log_index      INTEGER,
+  requested_block          BIGINT,
+  requested_at             TIMESTAMPTZ,
+
+  -- Result 이벤트 메타 (도착 전엔 NULL)
+  completed_tx_hash        VARCHAR(66),
+  completed_log_index      INTEGER,
+  completed_block          BIGINT,
+  completed_at             TIMESTAMPTZ,
+
+  created_at               TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_adv_attempts_user
+  ON advanced_attempts (user_address);
+CREATE INDEX IF NOT EXISTS idx_adv_attempts_user_item_time
+  ON advanced_attempts (user_address, item_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_adv_attempts_stats
+  ON advanced_attempts (mode, before_extra_level, status) WHERE status = 'completed';
+CREATE INDEX IF NOT EXISTS idx_adv_attempts_requested_at
+  ON advanced_attempts (requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_adv_attempts_vrf_id
+  ON advanced_attempts (vrf_request_id);
+
+
+-- ------------------------------------------------------------
+--  advanced_rate_history : 상급 확률표 변경 이력 (차별화 #3)
+-- ------------------------------------------------------------
+--  AdvancedRateUpdated 로 INSERT 만. (mode, extraLevel) 2차원 + 파괴율 추적.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS advanced_rate_history (
+  id                       BIGSERIAL     PRIMARY KEY,
+  updater                  VARCHAR(42)   NOT NULL,
+  mode                     SMALLINT      NOT NULL,
+  extra_level              SMALLINT      NOT NULL,
+
+  old_success_rate         INTEGER,
+  new_success_rate         INTEGER       NOT NULL,
+  old_destroy_rate         INTEGER,
+  new_destroy_rate         INTEGER       NOT NULL,
+
+  on_chain_timestamp       TIMESTAMPTZ   NOT NULL,
+  tx_hash                  VARCHAR(66)   NOT NULL,
+  log_index                INTEGER       NOT NULL,
+  block_number             BIGINT        NOT NULL,
+  created_at               TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+
+  UNIQUE (tx_hash, log_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_adv_rate_history_mode_level_block
+  ON advanced_rate_history (mode, extra_level, block_number DESC);
