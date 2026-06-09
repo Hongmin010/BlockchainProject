@@ -13,7 +13,7 @@ const provider = new ethers.JsonRpcProvider(
 );
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
-const proofListPath = process.env.PROOF_LIST_PATH ?? "./merkle_proof_list.json";
+const proofListPath = process.env.PROOF_LIST_PATH ?? "./merkle-claims.baseSepolia.json";
 const proofList = JSON.parse(readFileSync(proofListPath, "utf8"));
 
 const address = process.env.CONTRACT_ADDRESS ?? proofList.contractAddress;
