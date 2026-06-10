@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar, TxHash } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
+import { useAdvancedForge } from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
@@ -32,7 +33,7 @@ export default function Game({ address, onConnect, wallet }) {
   const navigate = useNavigate();
   const stageRef = useRef(null);
 
-  // ── useForge 훅 ──────────────────────────────────────────────
+  // ── useForge 훅 (일반 강화 0~5단계) ─────────────────────────
   const {
     level,
     isPending,
@@ -47,11 +48,46 @@ export default function Game({ address, onConnect, wallet }) {
     address,
   });
 
+  // ── useAdvancedForge 훅 (상급 강화 5~10단계) ─────────────────
+  const {
+    extraLevel,
+    totalLevel,
+    safeDropStreak,
+    isGuaranteed,
+    isRiskyBlocked,
+    isPending: advPending,
+    status: advStatus,
+    lastResult: advLastResult,
+    error: advError,
+    forge: advForge,
+    refreshState: advRefreshState,
+  } = useAdvancedForge({
+    signer: wallet?.signer ?? null,
+    provider: wallet?.provider ?? null,
+    address,
+  });
+
+  // 일반/상급 강화 분기 기준
+  const isAdvancedMode = level >= 5;
+  // 화면에 표시할 레벨 (일반: 0~5, 상급: 5~10)
+  const displayLevel = isAdvancedMode ? totalLevel : level;
+
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(1);
+
+  // ── 상급 강화 해금 알림 ──────────────────────────────────────
+  const [showAdvancedUnlock, setShowAdvancedUnlock] = useState(false);
+
+  useEffect(() => {
+    if (lastResult?.afterLevel === 5) {
+      setShowAdvancedUnlock(true);
+      const t = setTimeout(() => setShowAdvancedUnlock(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [lastResult]);
 
   // ── Merkle proof 상태 ────────────────────────────────────────
   const [isFetchingProof, setIsFetchingProof] = useState(false);
@@ -88,7 +124,8 @@ export default function Game({ address, onConnect, wallet }) {
   // 선택 아이템 변경 시 훅 상태 동기화
   useEffect(() => {
     refreshState(selectedItemId);
-  }, [selectedItemId, refreshState]);
+    advRefreshState(selectedItemId);
+  }, [selectedItemId, refreshState, advRefreshState]);
 
   useEffect(() => {
     // 확률표 변경 이력이 있으면 최신 값으로 덮어쓰기
@@ -184,6 +221,10 @@ export default function Game({ address, onConnect, wallet }) {
     if (lastResult) spawnParticles(lastResult.success);
   }, [lastResult, spawnParticles]);
 
+  useEffect(() => {
+    if (advLastResult) spawnParticles(advLastResult.success);
+  }, [advLastResult, spawnParticles]);
+
   // ── 지갑 미연결 ──────────────────────────────────────────────
   if (!address) {
     return (
@@ -199,8 +240,10 @@ export default function Game({ address, onConnect, wallet }) {
   }
 
   // ── 파생 값 ──────────────────────────────────────────────────
-  const isForging = status === 'waiting_tx' || status === 'waiting_vrf';
-  const currentProb = level < 5 ? (probTable[level]?.prob ?? 0) : 0;
+  const isForging = isAdvancedMode
+    ? advStatus === 'waiting_tx' || advStatus === 'waiting_vrf'
+    : status === 'waiting_tx' || status === 'waiting_vrf';
+  const currentProb = !isAdvancedMode ? (probTable[level]?.prob ?? 0) : null;
 
   // 최근 강화 표시용 변환
   const recentRows = recentAttempts.map((a) => ({
@@ -210,8 +253,9 @@ export default function Game({ address, onConnect, wallet }) {
     time: formatDateTime(a.requestedAt),
   }));
 
-  // 강화 결과 상태 (UI 표시용)
-  const resultState = lastResult ? (lastResult.success ? 'success' : 'fail') : null;
+  // 강화 결과 상태 (UI 표시용 — 일반/상급 통합)
+  const activeResult = isAdvancedMode ? advLastResult : lastResult;
+  const resultState = activeResult ? (activeResult.success ? 'success' : 'fail') : null;
 
   return (
     <div className={styles.page}>
@@ -254,23 +298,43 @@ export default function Game({ address, onConnect, wallet }) {
           <div className={styles.levelRow}>
             <div>
               <div className="cf-cap" style={{ marginBottom: 6 }}>
-                현재 단계
+                현재 단계{isAdvancedMode && <span className={styles.advancedTag}>상급</span>}
               </div>
               <div className={styles.levelDisplay}>
-                <span className={styles.levelCurrent}>Lv. {level}</span>
+                <span className={styles.levelCurrent}>Lv. {displayLevel}</span>
                 <span style={{ color: 'var(--ink-3)' }}>→</span>
-                <span className={styles.levelNext}>Lv. {level + 1}</span>
+                <span className={isAdvancedMode ? styles.levelNextAdvanced : styles.levelNext}>
+                  {displayLevel < 10 ? `Lv. ${displayLevel + 1}` : 'MAX'}
+                </span>
               </div>
             </div>
             <Badge>
               <span style={{ color: 'var(--ink-3)' }}>성공률</span>
-              <span style={{ color: 'var(--ember-300)', fontWeight: 700 }}>{currentProb}%</span>
+              {currentProb !== null ? (
+                <span style={{ color: 'var(--ember-300)', fontWeight: 700 }}>{currentProb}%</span>
+              ) : (
+                <span style={{ color: '#9b7de0', fontWeight: 700 }}>상급 선택</span>
+              )}
             </Badge>
           </div>
 
           {/* 단계 바 */}
           <div style={{ marginBottom: 24 }}>
-            <StageBar current={level} max={5} />
+            {!isAdvancedMode ? (
+              <StageBar current={level} max={5} />
+            ) : (
+              <div className={styles.stageBarGroup}>
+                <div className={styles.stageBarSection}>
+                  <span className={styles.stageBarLabel}>일반</span>
+                  <StageBar current={5} max={5} />
+                </div>
+                <span className={styles.stageBarArrow}>›</span>
+                <div className={styles.stageBarSection}>
+                  <span className={`${styles.stageBarLabel} ${styles.stageBarLabelAdvanced}`}>상급</span>
+                  <StageBar current={extraLevel} max={5} variant="advanced" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 고양이 컨테이너 */}
@@ -297,14 +361,23 @@ export default function Game({ address, onConnect, wallet }) {
                 ${resultState === 'fail' ? styles.catShake : ''}
                 ${isForging && !resultState ? styles.catWait : ''}`}
             >
-              {CAT_EMOJIS[Math.min(level, CAT_EMOJIS.length - 1)]}
+              {CAT_EMOJIS[Math.min(displayLevel, CAT_EMOJIS.length - 1)]}
             </div>
 
-            <div className={styles.lvBadge}>LV. {level}</div>
+            <div className={`${styles.lvBadge} ${isAdvancedMode ? styles.lvBadgeAdvanced : ''}`}>
+              LV. {displayLevel}
+            </div>
           </div>
 
+          {/* 상급 강화 해금 알림 */}
+          {showAdvancedUnlock && (
+            <div className={styles.advancedUnlock}>
+              🔓 상급 강화 해금! 이제 Lv.10까지 강화할 수 있어요
+            </div>
+          )}
+
           {/* VRF 대기 안내 */}
-          {status === 'waiting_vrf' && (
+          {isForging && (
             <div
               style={{
                 textAlign: 'center',
@@ -318,23 +391,39 @@ export default function Game({ address, onConnect, wallet }) {
           )}
 
           {/* 강화 오류 */}
-          {forgeError && (
-            <div style={{ color: 'var(--fail)', fontSize: 13, marginTop: 4 }}>⚠ {forgeError}</div>
+          {(forgeError || advError) && (
+            <div style={{ color: 'var(--fail)', fontSize: 13, marginTop: 4 }}>
+              ⚠ {forgeError || advError}
+            </div>
           )}
           {proofError && (
             <div style={{ color: 'var(--fail)', fontSize: 13, marginTop: 4 }}>🔒 {proofError}</div>
           )}
 
           {/* 강화 로그 (lastResult) */}
-          {lastResult && (
+          {(lastResult || advLastResult) && (
             <div className={styles.logList}>
               <div className={styles.logItem}>
-                <span className={styles.logStage}>
-                  Lv.{lastResult.beforeLevel}→{lastResult.afterLevel}
-                </span>
-                <span className={lastResult.success ? styles.logSuccess : styles.logFail}>
-                  {lastResult.success ? '✓ 성공' : '✕ 실패'}
-                </span>
+                {lastResult && (
+                  <>
+                    <span className={styles.logStage}>
+                      Lv.{lastResult.beforeLevel}→{lastResult.afterLevel}
+                    </span>
+                    <span className={lastResult.success ? styles.logSuccess : styles.logFail}>
+                      {lastResult.success ? '✓ 성공' : '✕ 실패'}
+                    </span>
+                  </>
+                )}
+                {advLastResult && (
+                  <>
+                    <span className={styles.logStage}>
+                      Lv.{advLastResult.beforeTotalLevel}→{advLastResult.afterTotalLevel}
+                    </span>
+                    <span className={advLastResult.success ? styles.logSuccess : styles.logFail}>
+                      {advLastResult.success ? '✓ 성공' : '✕ 실패'}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -345,16 +434,23 @@ export default function Game({ address, onConnect, wallet }) {
               variant="primary"
               size="xl"
               onClick={handleForge}
-              disabled={userItems.length === 0 || level >= 5 || isForging || isPending || isFetchingProof}
+              disabled={
+                userItems.length === 0 ||
+                isForging ||
+                isFetchingProof ||
+                (isAdvancedMode ? advPending || totalLevel >= 10 : isPending || level >= 5)
+              }
               loading={isForging || isFetchingProof}
               style={{ flex: '1 1 auto' }}
             >
-              {level >= 5
+              {totalLevel >= 10
                 ? '🎉 최고 레벨!'
-                : isPending
+                : (isAdvancedMode ? advPending : isPending)
                 ? '⏳ 결과 대기 중…'
                 : isFetchingProof
                 ? '🔑 등록 확인 중…'
+                : isAdvancedMode
+                ? '⚒ 상급 강화 시도하기'
                 : '⚒ 강화 시도하기'}
             </Button>
             <Button variant="secondary" size="xl" onClick={() => refreshState(selectedItemId)}>
