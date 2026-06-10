@@ -11,6 +11,7 @@ import {
   fetchMerkleProof,
   fetchUserStats,
   fetchAdvancedStats,
+  fetchAdvancedRecentAttempts,
   formatDateTime,
   shortenTx,
 } from '../api/api';
@@ -118,6 +119,7 @@ export default function Game({ address, onConnect, wallet }) {
 
   // ── 최근 강화 결과 ────────────────────────────────────────────
   const [recentAttempts, setRecentAttempts] = useState([]);
+  const [recentAdvAttempts, setRecentAdvAttempts] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
 
   // ── 확률표 ───────────────────────────────────────────────────
@@ -199,9 +201,13 @@ export default function Game({ address, onConnect, wallet }) {
       })
       .catch(() => {});
 
-    fetchRecentAttempts(8)
-      .then((data) => {
-        setRecentAttempts(data.attempts ?? []);
+    Promise.all([
+      fetchRecentAttempts(8),
+      fetchAdvancedRecentAttempts(8),
+    ])
+      .then(([base, adv]) => {
+        setRecentAttempts(base.attempts ?? []);
+        setRecentAdvAttempts(adv.attempts ?? []);
         setRecentLoading(false);
       })
       .catch(() => setRecentLoading(false));
@@ -220,11 +226,31 @@ export default function Game({ address, onConnect, wallet }) {
 
   // 상급 강화 완료 시 갱신
   useEffect(() => {
-    if (advStatus !== 'done' || !address) return;
-    fetchUserStats(address)
-      .then((data) => setUserItems(data.items ?? []))
-      .catch(() => {});
-  }, [advStatus, address]);
+    if (advStatus !== 'done' || !address || !advLastResult) return;
+
+    // 인덱서가 블록을 처리하기 전에 이벤트가 먼저 도착 → 즉시 옵티미스틱 항목 추가
+    const optimistic = {
+      attemptId: null,
+      requestedTxHash: advLastResult.txHash || null,
+      beforeTotalLevel: advLastResult.beforeTotalLevel,
+      afterTotalLevel: advLastResult.afterTotalLevel,
+      resultType: advLastResult.resultType,
+      modeLabel: advLastResult.mode === 1 ? 'risky' : 'safe',
+      requestedAt: new Date().toISOString(),
+    };
+    setRecentAdvAttempts((prev) => [optimistic, ...prev.slice(0, 7)]);
+
+    // 인덱서 처리 대기 후 실제 DB 데이터로 교체 (CONFIRMATION_BLOCKS + 폴링 주기)
+    const timer = setTimeout(() => {
+      fetchAdvancedRecentAttempts(8)
+        .then((data) => { if (data.attempts?.length > 0) setRecentAdvAttempts(data.attempts); })
+        .catch(() => {});
+      fetchUserStats(address)
+        .then((data) => setUserItems(data.items ?? []))
+        .catch(() => {});
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [advStatus, address, advLastResult]);
 
   // ── 강화 버튼 핸들러 ─────────────────────────────────────────
   const handleForge = useCallback(async () => {
@@ -317,12 +343,30 @@ export default function Game({ address, onConnect, wallet }) {
 
   const currentProb = !isAdvancedMode ? (probTable[level]?.prob ?? 0) : null;
 
-  const recentRows = recentAttempts.map((a) => ({
-    tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
-    stage: `Lv.${a.beforeLevel}`,
-    result: a.success ? 'S' : 'F',
-    time: formatDateTime(a.requestedAt),
-  }));
+  const ADV_BADGE = { 0: '실패', 1: '성공', 2: '하락', 3: '파괴', 4: '보장' };
+
+  const recentRows = [
+    ...recentAttempts.map((a) => ({
+      tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
+      stage: `Lv.${a.beforeLevel}`,
+      success: a.success,
+      isAdvanced: false,
+      sortKey: a.requestedAt,
+      time: formatDateTime(a.requestedAt),
+    })),
+    ...recentAdvAttempts.map((a) => ({
+      tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
+      stage: `Lv.${a.beforeTotalLevel}`,
+      success: a.resultType === 1 || a.resultType === 4,
+      isAdvanced: true,
+      modeLabel: a.modeLabel,
+      resultType: a.resultType,
+      sortKey: a.requestedAt,
+      time: formatDateTime(a.requestedAt),
+    })),
+  ]
+    .sort((a, b) => new Date(b.sortKey) - new Date(a.sortKey))
+    .slice(0, 8);
 
   // 스테이지 이펙트 상태
   let stageState = null;
@@ -709,16 +753,21 @@ export default function Game({ address, onConnect, wallet }) {
                   기록 없음
                 </div>
               ) : (
-                recentRows.map(({ tx, stage, result: r, time }, idx) => (
+                recentRows.map(({ tx, stage, success, isAdvanced, modeLabel, resultType, time }, idx) => (
                   <div key={idx} className={styles.recentRow}>
                     <div className={styles.recentInfo}>
                       <TxHash hash={tx} shorten={false} />
                       <span className={styles.recentSub}>
                         {stage} · {time}
+                        {isAdvanced && (
+                          <span className={modeLabel === 'risky' ? styles.recentTagRisky : styles.recentTagSafe}>
+                            {modeLabel === 'risky' ? ' 상남자' : ' 쫄보'}
+                          </span>
+                        )}
                       </span>
                     </div>
-                    <Badge variant={r === 'S' ? 'success' : 'fail'} dot>
-                      {r === 'S' ? '성공' : '실패'}
+                    <Badge variant={success ? 'success' : 'fail'} dot>
+                      {isAdvanced ? (ADV_BADGE[resultType] ?? '—') : success ? '성공' : '실패'}
                     </Badge>
                   </div>
                 ))
