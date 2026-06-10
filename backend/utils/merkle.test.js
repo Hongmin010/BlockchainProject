@@ -67,7 +67,7 @@ test('computeLeaf: itemId 가 string 이든 number 든 동일', () => {
 // ------------------------------------------------------------
 //  proof 정확성 — 핵심 (등록 leaf 전부 root 로 재구성)
 // ------------------------------------------------------------
-test('getProof: 등록된 101개 leaf 의 proof 가 전부 root 로 재구성됨', () => {
+test('getProof: 등록된 모든 leaf 의 proof 가 전부 root 로 재구성됨', () => {
   const root = getRoot();
   const type = allowlist.enhancementType;
   let checked = 0;
