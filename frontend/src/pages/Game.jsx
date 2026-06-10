@@ -8,6 +8,7 @@ import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
   fetchMerkleProof,
+  fetchUserStats,
   formatDateTime,
   shortenTx,
 } from '../api/api';
@@ -24,8 +25,6 @@ const DEFAULT_PROB_TABLE = [
 
 const CAT_EMOJIS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
-// 아이템 ID는 1번으로 고정 (추후 선택 UI 확장 가능)
-const ITEM_ID = 1;
 // enhancementType: 0 = 기본
 const ENHANCEMENT_TYPE = 0;
 
@@ -48,6 +47,12 @@ export default function Game({ address, onConnect, wallet }) {
     address,
   });
 
+  // ── 아이템 목록 상태 ─────────────────────────────────────────
+  const [userItems, setUserItems] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState(1);
+
   // ── Merkle proof 상태 ────────────────────────────────────────
   const [isFetchingProof, setIsFetchingProof] = useState(false);
   const [proofError, setProofError] = useState(null);
@@ -58,6 +63,32 @@ export default function Game({ address, onConnect, wallet }) {
 
   // ── 확률표 (서버에서 최신 값 로드) ──────────────────────────
   const [probTable, setProbTable] = useState(DEFAULT_PROB_TABLE);
+
+  // 지갑 연결 시 아이템 목록 로드
+  useEffect(() => {
+    if (!address) return;
+    setItemsLoading(true);
+    setItemsError(false);
+    fetchUserStats(address)
+      .then((data) => {
+        const items = data.items ?? [];
+        setUserItems(items);
+        // 현재 선택된 아이템이 목록에 없으면 첫 번째 아이템으로 교체
+        if (items.length > 0 && !items.find((it) => Number(it.itemId) === selectedItemId)) {
+          setSelectedItemId(Number(items[0].itemId));
+        }
+        setItemsLoading(false);
+      })
+      .catch(() => {
+        setItemsError(true);
+        setItemsLoading(false);
+      });
+  }, [address]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 선택 아이템 변경 시 훅 상태 동기화
+  useEffect(() => {
+    refreshState(selectedItemId);
+  }, [selectedItemId, refreshState]);
 
   useEffect(() => {
     // 확률표 변경 이력이 있으면 최신 값으로 덮어쓰기
@@ -93,9 +124,9 @@ export default function Game({ address, onConnect, wallet }) {
       });
   }, []); // 마운트 시 1번만 실행
 
-  // 강화 완료 시 최근 목록 갱신
+  // 강화 완료 시 최근 목록 + 아이템 레벨 갱신
   useEffect(() => {
-    if (status !== 'done') return;
+    if (status !== 'done' || !address) return;
 
     fetchRecentAttempts(8)
       .then((data) => {
@@ -105,7 +136,11 @@ export default function Game({ address, onConnect, wallet }) {
       .catch(() => {
         setRecentLoading(false);
       });
-  }, [status]);
+
+    fetchUserStats(address)
+      .then((data) => setUserItems(data.items ?? []))
+      .catch(() => {});
+  }, [status, address]);
 
   // ── 강화 버튼 핸들러 (level 0이면 proof 먼저 발급) ───────────
   const handleForge = useCallback(async () => {
@@ -115,7 +150,7 @@ export default function Game({ address, onConnect, wallet }) {
     if (level === 0) {
       setIsFetchingProof(true);
       try {
-        const result = await fetchMerkleProof(address, ITEM_ID, ENHANCEMENT_TYPE);
+        const result = await fetchMerkleProof(address, selectedItemId, ENHANCEMENT_TYPE);
         proof = result.proof;
       } catch (err) {
         setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
@@ -125,8 +160,8 @@ export default function Game({ address, onConnect, wallet }) {
       setIsFetchingProof(false);
     }
 
-    forge(ITEM_ID, ENHANCEMENT_TYPE, proof);
-  }, [level, address, forge]);
+    forge(selectedItemId, ENHANCEMENT_TYPE, proof);
+  }, [level, address, selectedItemId, forge]);
 
   // ── 파티클 애니메이션 ────────────────────────────────────────
   const spawnParticles = useCallback((success) => {
@@ -185,6 +220,36 @@ export default function Game({ address, onConnect, wallet }) {
       <div className={styles.grid}>
         {/* ── 고양이 강화 섹션 ── */}
         <div className={styles.leftCard}>
+          {/* 고양이 아이템 목록 */}
+          {!itemsLoading && userItems.length > 0 && (
+            <div className={styles.catList}>
+              {userItems.map((item) => {
+                const iid = Number(item.itemId);
+                const isSelected = iid === selectedItemId;
+                return (
+                  <button
+                    key={iid}
+                    className={`${styles.catListItem} ${isSelected ? styles.catListItemSelected : ''}`}
+                    onClick={() => setSelectedItemId(iid)}
+                  >
+                    <span className={styles.catListEmoji}>
+                      {CAT_EMOJIS[Math.min(item.level, CAT_EMOJIS.length - 1)]}
+                    </span>
+                    <span className={`${styles.catListMeta} ${isSelected ? styles.catListMetaSelected : ''}`}>
+                      #{iid} · Lv.{item.level}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {!itemsLoading && itemsError && (
+            <div className={styles.catListEmpty}>⚠ 서버 연결 실패 — 백엔드 서버를 확인해주세요</div>
+          )}
+          {!itemsLoading && !itemsError && userItems.length === 0 && (
+            <div className={styles.catListEmpty}>보유 고양이 없음 — NFT 민팅 후 이용해주세요</div>
+          )}
+
           {/* 레벨 표시 */}
           <div className={styles.levelRow}>
             <div>
@@ -280,7 +345,7 @@ export default function Game({ address, onConnect, wallet }) {
               variant="primary"
               size="xl"
               onClick={handleForge}
-              disabled={level >= 5 || isForging || isPending || isFetchingProof}
+              disabled={userItems.length === 0 || level >= 5 || isForging || isPending || isFetchingProof}
               loading={isForging || isFetchingProof}
               style={{ flex: '1 1 auto' }}
             >
@@ -292,7 +357,7 @@ export default function Game({ address, onConnect, wallet }) {
                 ? '🔑 등록 확인 중…'
                 : '⚒ 강화 시도하기'}
             </Button>
-            <Button variant="secondary" size="xl" onClick={() => refreshState(ITEM_ID)}>
+            <Button variant="secondary" size="xl" onClick={() => refreshState(selectedItemId)}>
               새로고침
             </Button>
           </div>
