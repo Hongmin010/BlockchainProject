@@ -42,3 +42,20 @@
 .locked {
   color: var(--ink-4);
 }
+
+/* 상급 강화 — 완료 */
+.advancedDone {
+  background: linear-gradient(180deg, #7c5cbf, #5a3d99);
+  border-color: #4a2f88;
+  color: #fff;
+  box-shadow:
+    0 0 12px rgba(124, 92, 191, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.15) inset;
+}
+
+/* 상급 강화 — 다음 */
+.advancedNext {
+  border: 1px dashed #9b7de0;
+  color: #c4a8f5;
+  background: rgba(124, 92, 191, 0.1);
+}

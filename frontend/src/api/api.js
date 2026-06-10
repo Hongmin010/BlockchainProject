@@ -150,6 +150,25 @@ export async function fetchAttempt(attemptId) {
   return api.get(`/api/attempts/${attemptId}`);
 }
 
+// ─── /api/merkle ───────────────────────────────────────────
+
+/**
+ * GET /api/merkle/proof?user=0x..&itemId=N&type=N
+ * allowlist Merkle proof 발급 (첫 강화 시 필요)
+ *
+ * @param {string} address  — 0x... 지갑 주소
+ * @param {number|string} itemId
+ * @param {number} type     — enhancementType (기본 0)
+ *
+ * 반환 예시 (등록된 경우)
+ * { user, itemId, type, registered: true, leaf, proof: ['0x...', ...], root }
+ *
+ * 미등록 시 404 → Promise.reject(Error('해당 ... allowlist에 없어 강화 불가'))
+ */
+export async function fetchMerkleProof(address, itemId, type = 0) {
+  return api.get('/api/merkle/proof', { params: { user: address, itemId, type } });
+}
+
 // ─── /api/probability ──────────────────────────────────────────
 
 /**

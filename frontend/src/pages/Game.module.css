@@ -7,6 +7,73 @@
   z-index: 1;
 }
 
+/* ── 고양이 목록 ── */
+.catList {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 20px;
+  scrollbar-width: none;
+}
+
+.catList::-webkit-scrollbar {
+  display: none;
+}
+
+.catListItem {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 72px;
+}
+
+.catListItem:hover {
+  border-color: rgba(255, 122, 26, 0.3);
+  background: rgba(255, 122, 26, 0.04);
+}
+
+.catListItemSelected {
+  border-color: var(--ember-300);
+  background: rgba(255, 122, 26, 0.08);
+}
+
+.catListEmoji {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.catListMeta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.catListMetaSelected {
+  color: var(--ember-300);
+  font-weight: 600;
+}
+
+.catListEmpty {
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
 /* ── 왼쪽 카드 ── */
 .leftCard {
   background: linear-gradient(180deg, rgba(255, 168, 95, 0.04), transparent 30%), var(--bg-2);
@@ -16,6 +83,80 @@
   padding: 32px;
   position: relative;
   overflow: hidden;
+}
+
+/* ── 상급 강화 해금 알림 ── */
+.advancedUnlock {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(124, 92, 191, 0.15), rgba(124, 92, 191, 0.05));
+  border: 1px solid rgba(124, 92, 191, 0.4);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c4a8f5;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+/* ── 레벨 표시 태그 ── */
+.advancedTag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: rgba(124, 92, 191, 0.2);
+  border: 1px solid rgba(124, 92, 191, 0.4);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #c4a8f5;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+
+.levelNextAdvanced {
+  font-size: 32px;
+  font-weight: 700;
+  color: #9b7de0;
+  letter-spacing: -0.03em;
+}
+
+/* ── 상급 StageBar 레이아웃 ── */
+.stageBarGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stageBarSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stageBarLabel {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stageBarLabelAdvanced {
+  color: #9b7de0;
+}
+
+.stageBarArrow {
+  font-size: 20px;
+  color: var(--ink-4);
+  align-self: flex-end;
+  margin-bottom: 2px;
+}
+
+/* ── LV 뱃지 상급 변형 ── */
+.lvBadgeAdvanced {
+  border-color: rgba(124, 92, 191, 0.4);
+  color: #c4a8f5;
 }
 
 /* 레벨 표시 */
