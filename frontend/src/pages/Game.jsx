@@ -514,10 +514,10 @@ export default function Game({ address, onConnect, wallet }) {
           )}
 
           {/* 보장 / 스트릭 / 차단 배너 */}
-          {isAdvancedMode && isGuaranteed && (
+          {isAdvancedMode && advMode === AdvancedMode.Safe && isGuaranteed && (
             <div className={styles.guaranteedBanner}>🌟 다음 쫄보 강화 보장 발동!</div>
           )}
-          {isAdvancedMode && !isGuaranteed && safeDropStreak > 0 && (
+          {isAdvancedMode && advMode === AdvancedMode.Safe && !isGuaranteed && safeDropStreak > 0 && (
             <div className={styles.safeStreakBanner}>
               연속 하락 {safeDropStreak}회 · {2 - safeDropStreak}회 더 하락 시 보장
             </div>
@@ -665,13 +665,13 @@ export default function Game({ address, onConnect, wallet }) {
                   </button>
                 </div>
 
-                {isGuaranteed ? (
+                {advMode === AdvancedMode.Safe && (isGuaranteed ? (
                   <div className={styles.guaranteedIndicator}>🌟 다음 강화 보장 발동!</div>
                 ) : safeDropStreak > 0 ? (
                   <div className={styles.streakIndicator}>
                     연속 하락 {safeDropStreak}회 · {2 - safeDropStreak}회 더 하락 시 보장
                   </div>
-                ) : null}
+                ) : null)}
               </>
             )}
 
