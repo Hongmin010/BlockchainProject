@@ -109,9 +109,12 @@ export default function Game({ address, onConnect, wallet }) {
       .then((data) => {
         const items = data.items ?? [];
         setUserItems(items);
-        // 현재 선택된 아이템이 목록에 없으면 첫 번째 아이템으로 교체
         if (items.length > 0 && !items.find((it) => Number(it.itemId) === selectedItemId)) {
           setSelectedItemId(Number(items[0].itemId));
+        }
+        // 백엔드에 아이템이 없으면(강화 이력 없음) itemId=1로 시작 가능하게 폴백
+        if (items.length === 0) {
+          setSelectedItemId(1);
         }
         setItemsLoading(false);
       })
@@ -239,6 +242,14 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
+  // 인덱서 미운영 시 훅 레벨로 아이템 합성 (백엔드에 아이템 없을 때 폴백)
+  const displayItems =
+    userItems.length > 0
+      ? userItems
+      : level > 0
+      ? [{ itemId: String(selectedItemId), level }]
+      : [];
+
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
     ? advStatus === 'waiting_tx' || advStatus === 'waiting_vrf'
@@ -265,9 +276,9 @@ export default function Game({ address, onConnect, wallet }) {
         {/* ── 고양이 강화 섹션 ── */}
         <div className={styles.leftCard}>
           {/* 고양이 아이템 목록 */}
-          {!itemsLoading && userItems.length > 0 && (
+          {!itemsLoading && displayItems.length > 0 && (
             <div className={styles.catList}>
-              {userItems.map((item) => {
+              {displayItems.map((item) => {
                 const iid = Number(item.itemId);
                 const isSelected = iid === selectedItemId;
                 return (
@@ -290,7 +301,7 @@ export default function Game({ address, onConnect, wallet }) {
           {!itemsLoading && itemsError && (
             <div className={styles.catListEmpty}>⚠ 서버 연결 실패 — 백엔드 서버를 확인해주세요</div>
           )}
-          {!itemsLoading && !itemsError && userItems.length === 0 && (
+          {!itemsLoading && !itemsError && displayItems.length === 0 && (
             <div className={styles.catListEmpty}>보유 고양이 없음 — NFT 민팅 후 이용해주세요</div>
           )}
 
@@ -435,7 +446,6 @@ export default function Game({ address, onConnect, wallet }) {
               size="xl"
               onClick={handleForge}
               disabled={
-                userItems.length === 0 ||
                 isForging ||
                 isFetchingProof ||
                 (isAdvancedMode ? advPending || totalLevel >= 10 : isPending || level >= 5)
