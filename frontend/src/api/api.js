@@ -198,6 +198,22 @@ export async function fetchProbabilityHistory(level = null) {
   return api.get('/api/probability/history', { params });
 }
 
+// ─── /api/advanced ─────────────────────────────────────────────
+
+/**
+ * GET /api/advanced/stats
+ * 상급 강화 단계별 통계 (Safe/Risky 분리)
+ *
+ * 반환 예시
+ * {
+ *   safe:  [{ mode:'safe',  extraLevel:0, declaredSuccessRateBp:6000, ... }],
+ *   risky: [{ mode:'risky', extraLevel:0, declaredSuccessRateBp:7000, declaredDestroyRateBp:2000, ... }]
+ * }
+ */
+export async function fetchAdvancedStats() {
+  return api.get('/api/advanced/stats');
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────────
 
 /**

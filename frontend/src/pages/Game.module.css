@@ -603,6 +603,222 @@
   color: var(--ember-500);
 }
 
+/* ── 상급 강화 탭 ── */
+.advModeTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.advModeTab {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.advModeTab:hover:not(:disabled) {
+  border-color: rgba(155, 125, 224, 0.4);
+  color: var(--ink-1);
+}
+
+.advModeTabActiveSafe {
+  background: rgba(124, 92, 191, 0.12);
+  border-color: rgba(124, 92, 191, 0.5);
+  color: #c4a8f5;
+}
+
+.advModeTabActiveRisky {
+  background: rgba(232, 98, 60, 0.12);
+  border-color: rgba(232, 98, 60, 0.5);
+  color: var(--ember-300);
+}
+
+.advModeTabBlocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.guaranteedDot {
+  font-size: 11px;
+}
+
+/* ── 보장/스트릭 인디케이터 (오른쪽 탭 아래) ── */
+.guaranteedIndicator {
+  margin-bottom: 12px;
+  padding: 7px 12px;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd700;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.streakIndicator {
+  margin-bottom: 12px;
+  padding: 7px 12px;
+  background: rgba(232, 98, 60, 0.08);
+  border: 1px solid rgba(232, 98, 60, 0.25);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #e8623c;
+  text-align: center;
+}
+
+/* ── 보장/스트릭/차단 배너 (왼쪽) ── */
+.guaranteedBanner {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd700;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+.safeStreakBanner {
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: rgba(232, 98, 60, 0.08);
+  border: 1px solid rgba(232, 98, 60, 0.25);
+  border-radius: 10px;
+  font-size: 12px;
+  color: #e8623c;
+  text-align: center;
+}
+
+.riskyBlockedBanner {
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: rgba(232, 98, 60, 0.1);
+  border: 1px solid rgba(232, 98, 60, 0.4);
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ember-300);
+  text-align: center;
+}
+
+/* ── 상급 확률표 변형 ── */
+.probRowRisky {
+  grid-template-columns: 90px 1fr 40px 56px;
+}
+
+.probRowActiveAdv {
+  padding: 6px 8px;
+  background: rgba(124, 92, 191, 0.08);
+  border-color: rgba(124, 92, 191, 0.3);
+}
+
+.probStageActiveAdv {
+  color: #c4a8f5;
+}
+
+.probBarActiveAdv {
+  background: linear-gradient(90deg, #7c5cbf, #c4a8f5);
+  box-shadow: 0 0 8px rgba(124, 92, 191, 0.4);
+}
+
+.probValueActiveAdv {
+  font-weight: 700;
+  color: #c4a8f5;
+}
+
+.destroyRate {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #e86040;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.advModeNote {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* ── 상급 결과 뱃지 ── */
+.resultDowngrade {
+  background: rgba(232, 98, 60, 0.88);
+  color: #fff;
+}
+
+.resultDestroyed {
+  background: rgba(180, 0, 0, 0.92);
+  color: #fff;
+}
+
+.resultGuaranteed {
+  background: rgba(180, 140, 0, 0.92);
+  color: #fff;
+}
+
+/* ── Destroyed 스테이지 이펙트 ── */
+.stageDestroyed {
+  animation: flashDestroyed 0.8s ease;
+}
+
+@keyframes flashDestroyed {
+  0%,
+  100% {
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 60%, rgba(255, 168, 95, 0.15), transparent 70%),
+      linear-gradient(180deg, #2a2118, #1a140e);
+  }
+  20% {
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 60%, rgba(255, 30, 0, 0.5), transparent 70%),
+      linear-gradient(180deg, #3a1008, #280804);
+    border-color: rgba(255, 30, 0, 0.7);
+  }
+  50% {
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 60%, rgba(200, 0, 0, 0.35), transparent 70%),
+      linear-gradient(180deg, #2e0a06, #1e0604);
+  }
+}
+
+/* ── 상급 로그 스타일 ── */
+.logDowngrade {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e86040;
+}
+
+.logDestroyed {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff4422;
+}
+
+.logGuaranteed {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd700;
+}
+
 /* ── 반응형 ── */
 @media (max-width: 1024px) {
   .grid {
