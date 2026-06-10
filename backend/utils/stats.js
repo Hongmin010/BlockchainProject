@@ -160,6 +160,55 @@ function erfc(x) {
 }
 
 
+/**
+ * 카이제곱 생존함수(우꼬리 p-value). df=1,2 만 지원 — 고급강화 통계에 필요한 범위.
+ *  - df=1: p = erfc( sqrt(χ²/2) )   (2-cell 검정, chiSquare1df 와 동일 계열)
+ *  - df=2: p = exp( -χ²/2 )          (3-cell 검정의 정확한 닫힌형)
+ *  더 높은 df 가 필요해지면 정규화 상부 불완전감마(Q) 로 일반화할 것.
+ */
+function chiSquareSf(stat, df) {
+  if (!(stat > 0)) return 1;
+  if (df === 1) return erfc(Math.sqrt(stat / 2));
+  if (df === 2) return Math.exp(-stat / 2);
+  throw new RangeError(`chiSquareSf: unsupported df=${df} (1 또는 2만 지원)`);
+}
+
+
+/**
+ * 다항 적합도(goodness-of-fit) 카이제곱.
+ *
+ *   observed : 범주별 관측 횟수 [o0, o1, ...]  (정수 >= 0)
+ *   probs    : 범주별 표기 확률 [p0, p1, ...]  (합 ≈ 1)
+ *   반환     : { stat, df, pValue, n }          (df = 범주수 - 1)
+ *
+ *  ⚠ 적합도 검정은 각 셀 기대도수 E_i >= ~5 를 가정한다. 표본이 작거나
+ *    특정 확률이 매우 낮으면(E<5) p-value 신뢰도가 떨어지므로,
+ *    호출부는 fairnessVerdict 의 표본 컷오프(기본 30)와 함께 사용한다.
+ */
+function chiSquareGof(observed, probs) {
+  if (observed.length !== probs.length) {
+    throw new Error('chiSquareGof: observed/probs length mismatch');
+  }
+  const k = observed.length;
+  const n = observed.reduce((a, b) => a + b, 0);
+  const df = Math.max(1, k - 1);
+  if (n <= 0) return { stat: 0, df, pValue: 1, n: 0 };
+
+  let stat = 0;
+  for (let i = 0; i < k; i += 1) {
+    const e = n * probs[i];
+    if (e <= 0) {
+      // 표기 확률 0 인 범주에서 관측이 나오면 즉시 모순(p=0).
+      if (observed[i] > 0) return { stat: Infinity, df, pValue: 0, n };
+      continue; // E=0, O=0 → 기여 없음
+    }
+    const d = observed[i] - e;
+    stat += (d * d) / e;
+  }
+  return { stat, df, pValue: chiSquareSf(stat, df), n };
+}
+
+
 // ------------------------------------------------------------
 //  공정성 판정
 // ------------------------------------------------------------
@@ -227,6 +276,8 @@ module.exports = {
   wilson95,
   wilson95Bp,
   chiSquare1df,
+  chiSquareSf,
+  chiSquareGof,
   erfc,
   // 라벨링
   fairnessVerdict,

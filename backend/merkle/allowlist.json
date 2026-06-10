@@ -1,16 +1,17 @@
 {
-  "_comment": "온체인 merkleRoot에 커밋된 등록 목록(allowlist). 인덱싱된 attempts에서 복원, 온체인 root와 일치 검증됨. entries 순서가 트리 구조를 결정하므로 변경 금지.",
-  "_howToRegenerate": "node _genallowlist.tmp.js (attempts 기반 복원). 온체인 root 변경 시 재생성 필요.",
+  "_comment": "온체인 merkleRoot 에 커밋된 등록 목록(allowlist). 컨트랙트팀 제공 merkle-claims.baseSepolia.json 에서 생성. entries 순서가 트리 구조를 결정하므로 변경 금지.",
+  "_source": "merkle/merkle-claims.baseSepolia.json (컨트랙트팀 제공, Base Sepolia, on-chain root 와 일치 검증됨)",
+  "_howToRegenerate": "claims 파일의 claims[] 배열 순서대로 {user(lowercase), itemId} 추출. 온체인 root 변경 시 새 claims 파일 받아 재생성.",
   "contract": "0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59",
-  "merkleRoot": "0x7195eb4ef83b6a179535865a71a276feac370e4e570e6b7639c77dcf5565a76d",
+  "merkleRoot": "0xe14e78747f1f68794bdc91feab38e75720d732a8cf1770c585cf21ffcb4f1e8e",
   "enhancementType": 0,
   "construction": {
     "leafEncoding": "keccak256(abi.encode(address user, uint256 itemId, uint8 enhancementType))",
     "nodeHash": "keccak256(sortedPair(a,b))  // OZ MerkleProof, a<b ? (a,b):(b,a)",
     "oddNode": "promote  // 홀수 노드는 다음 레벨로 승격(중복 해시 안 함)",
-    "leafOrder": "entries 배열 순서 (= user_address ASC, item_id ASC)"
+    "leafOrder": "claims 파일 배열 순서 (컨트랙트 트리 생성 순서) — user/item 정렬 아님"
   },
-  "count": 101,
+  "count": 201,
   "entries": [
     {
       "user": "0x76491a444fea8b6c7dc1e12a973631b99f0f1ec9",
@@ -414,6 +415,406 @@
     },
     {
       "user": "0x9a7f7f7e990474659211526fca723f46d0e89aff",
+      "itemId": "100"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "1"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "2"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "3"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "4"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "5"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "6"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "7"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "8"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "9"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "10"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "11"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "12"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "13"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "14"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "15"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "16"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "17"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "18"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "19"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "20"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "21"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "22"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "23"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "24"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "25"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "26"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "27"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "28"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "29"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "30"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "31"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "32"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "33"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "34"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "35"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "36"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "37"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "38"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "39"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "40"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "41"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "42"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "43"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "44"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "45"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "46"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "47"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "48"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "49"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "50"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "51"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "52"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "53"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "54"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "55"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "56"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "57"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "58"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "59"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "60"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "61"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "62"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "63"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "64"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "65"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "66"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "67"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "68"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "69"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "70"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "71"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "72"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "73"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "74"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "75"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "76"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "77"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "78"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "79"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "80"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "81"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "82"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "83"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "84"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "85"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "86"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "87"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "88"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "89"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "90"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "91"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "92"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "93"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "94"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "95"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "96"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "97"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "98"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
+      "itemId": "99"
+    },
+    {
+      "user": "0x5735fc88d65061b16f580a2732d22b3306d336b8",
       "itemId": "100"
     }
   ]

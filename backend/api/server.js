@@ -40,6 +40,11 @@
  *
  *   GET /api/merkle/proof                allowlist Merkle proof 발급 (프론트 강화 요청 지원)
  *
+ *   GET /api/advanced/attempts/recent    고급강화 최근 시도 목록
+ *   GET /api/advanced/attempts/:id       ★ 고급강화 시도 1건 + 재검증 (T5)
+ *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
+ *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
+ *
  *  ※ 차별화 포인트 매핑
  *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
  *        → /api/stats/by-level, /api/stats/global, /api/stats/user/:address
@@ -57,6 +62,10 @@ const cors = require('cors');
 const db = require('../db/pool');
 const { summarizeLevel, rateToBp } = require('../utils/stats');
 const { verifySuccess, normalizeAddress } = require('../utils/verify');
+const { summarizeAdvancedSafe, summarizeAdvancedRisky } = require('../utils/advancedStats');
+const {
+  verifyAdvancedAttempt, fromDbRow: advFromDbRow, RESULT_LABEL,
+} = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
 
 const app = express();
@@ -93,7 +102,7 @@ app.get('/health', async (_req, res) => {
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'ok' : 'degraded',
     service: 'khu-blockchain-backend',
-    version: '3.0',
+    version: '4.0',
     db: dbOk,
     dbError,
     timestamp: new Date().toISOString(),
@@ -423,6 +432,215 @@ app.get('/api/merkle/proof', (req, res, next) => {
 
 
 // ============================================================
+//  /api/advanced/* — 고급강화(상급) 시도 조회 + 재검증 (T5) / 통계 (T6)
+// ============================================================
+
+const ADV_ATTEMPT_COLUMNS = `
+  attempt_id, user_address, item_id, mode,
+  before_extra_level, after_extra_level, before_total_level, after_total_level,
+  result_type, before_safe_drop_streak, after_safe_drop_streak, guaranteed,
+  success_rate_bps, destroy_rate_bps, random_value, roll_bps, vrf_request_id,
+  status, requested_at, completed_at, requested_tx_hash, completed_tx_hash`;
+
+/**
+ * GET /api/advanced/attempts/recent — 최근 고급강화 시도 (limit=20 default, max=100)
+ *  쿼리: ?user=<address> (선택) — 특정 유저만.
+ *  ※ /:attemptId 보다 먼저 정의해야 'recent' 가 attemptId 로 안 잡힌다.
+ */
+app.get('/api/advanced/attempts/recent', async (req, res, next) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+  let user = null;
+  if (req.query.user !== undefined) {
+    user = normalizeAddress(req.query.user);
+    if (!user) {
+      return res.status(400).json({ error: 'invalid_address', message: 'user must match /^0x[a-fA-F0-9]{40}$/' });
+    }
+  }
+  try {
+    const params = [limit];
+    let whereClause = '';
+    if (user) { params.push(user); whereClause = 'WHERE user_address = $2'; }
+    const { rows } = await db.query(`
+      SELECT ${ADV_ATTEMPT_COLUMNS}
+        FROM advanced_attempts
+       ${whereClause}
+       ORDER BY requested_at DESC NULLS LAST
+       LIMIT $1
+    `, params);
+    res.json({ limit, user, attempts: rows.map(formatAdvancedAttempt) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/advanced/attempts/:attemptId   ★ 고급강화 재검증 엔드포인트 (T5)
+ *
+ *  반환: { attempt, verification }
+ *    verification (status='completed' 인 경우만, 아니면 null):
+ *      { ok, expected, actual, checks, mismatches }
+ *      — utils/advancedVerify.verifyAdvancedAttempt 로 컨트랙트 산출 로직 재현·대조.
+ */
+app.get('/api/advanced/attempts/:attemptId', async (req, res, next) => {
+  const { attemptId } = req.params;
+  if (!/^\d+$/.test(attemptId)) {
+    return res.status(400).json({ error: 'invalid_attempt_id' });
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT ${ADV_ATTEMPT_COLUMNS}
+        FROM advanced_attempts
+       WHERE attempt_id = $1
+    `, [attemptId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'attempt_not_found', attemptId });
+    }
+
+    const row = rows[0];
+    let verification = null;
+    if (row.status === 'completed' && row.result_type != null) {
+      verification = verifyAdvancedAttempt(advFromDbRow(row));
+    }
+    res.json({ attempt: formatAdvancedAttempt(row), verification });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/advanced/stats   ★ 고급강화 통계 (T6)
+ *
+ *  (mode, extraLevel, 적용확률) 그룹별로 표기 vs 실측 + 검정.
+ *   - Safe : 성공 vs 비성공 (이항, 1df)
+ *   - Risky: 성공/파괴/유지 (다항, 2df)
+ *   - 보장(Guaranteed) 표본은 확률 사건이 아니므로 제외(guaranteed=false).
+ *
+ *  반환: { safe: [...summarizeAdvancedSafe], risky: [...summarizeAdvancedRisky] }
+ */
+app.get('/api/advanced/stats', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT mode::int                                       AS mode,
+             before_extra_level::int                         AS extra_level,
+             success_rate_bps::int                           AS success_rate_bps,
+             destroy_rate_bps::int                           AS destroy_rate_bps,
+             COUNT(*)::int                                   AS total,
+             COUNT(*) FILTER (WHERE result_type = 1)::int    AS success,
+             COUNT(*) FILTER (WHERE result_type = 3)::int    AS destroyed,
+             COUNT(*) FILTER (WHERE result_type = 0)::int    AS fail_keep
+        FROM advanced_attempts
+       WHERE status = 'completed' AND guaranteed = false
+       GROUP BY mode, before_extra_level, success_rate_bps, destroy_rate_bps
+       ORDER BY mode, before_extra_level
+    `);
+
+    const safe = [];
+    const risky = [];
+    for (const r of rows) {
+      if (r.mode === 0) {
+        safe.push(summarizeAdvancedSafe({
+          extraLevel: r.extra_level,
+          declaredSuccessBp: r.success_rate_bps,
+          success: r.success,
+          total: r.total,
+        }));
+      } else {
+        risky.push(summarizeAdvancedRisky({
+          extraLevel: r.extra_level,
+          declaredSuccessBp: r.success_rate_bps,
+          declaredDestroyBp: r.destroy_rate_bps,
+          success: r.success,
+          destroyed: r.destroyed,
+          failKeep: r.fail_keep,
+          total: r.total,
+        }));
+      }
+    }
+    res.json({ safe, risky });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ============================================================
+//  /api/ranking — 랭킹 (T7)
+// ============================================================
+
+/**
+ * GET /api/ranking?limit=10   (limit 1..100, default 10)
+ *
+ *  반환:
+ *   {
+ *     topItems:       [{ rank, userAddress, itemId, baseLevel, extraLevel, totalLevel }],
+ *     topChallengers: [{ rank, userAddress, attempts }],   // base + advanced 시도 합
+ *     topSuccess:     [{ rank, userAddress, successes }],   // base 성공 + advanced 성공(1,4) 합
+ *   }
+ *
+ *  ※ 모두 온체인 인덱싱 데이터에서 누구나 재계산 가능 — 신뢰 불필요.
+ *    advanced 성공 = resultType Success(1) 또는 Guaranteed(4) (레벨 상승).
+ */
+app.get('/api/ranking', async (req, res, next) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  try {
+    const [items, challengers, success] = await Promise.all([
+      db.query(`
+        SELECT user_address, item_id, level, extra_level, total_level
+          FROM user_items
+         ORDER BY total_level DESC, level DESC, item_id ASC
+         LIMIT $1
+      `, [limit]),
+      db.query(`
+        SELECT user_address, SUM(cnt)::int AS attempts
+          FROM (
+            SELECT user_address, COUNT(*) AS cnt FROM attempts          WHERE status='completed' GROUP BY user_address
+            UNION ALL
+            SELECT user_address, COUNT(*) AS cnt FROM advanced_attempts WHERE status='completed' GROUP BY user_address
+          ) t
+         GROUP BY user_address
+         ORDER BY attempts DESC
+         LIMIT $1
+      `, [limit]),
+      db.query(`
+        SELECT user_address, SUM(cnt)::int AS successes
+          FROM (
+            SELECT user_address, COUNT(*) FILTER (WHERE success) AS cnt
+              FROM attempts WHERE status='completed' GROUP BY user_address
+            UNION ALL
+            SELECT user_address, COUNT(*) FILTER (WHERE result_type IN (1,4)) AS cnt
+              FROM advanced_attempts WHERE status='completed' GROUP BY user_address
+          ) t
+         GROUP BY user_address
+         ORDER BY successes DESC
+         LIMIT $1
+      `, [limit]),
+    ]);
+
+    res.json({
+      limit,
+      topItems: items.rows.map((r, i) => ({
+        rank: i + 1,
+        userAddress: r.user_address,
+        itemId: r.item_id,
+        baseLevel: r.level,
+        extraLevel: r.extra_level,
+        totalLevel: r.total_level,
+      })),
+      topChallengers: challengers.rows.map((r, i) => ({
+        rank: i + 1, userAddress: r.user_address, attempts: r.attempts,
+      })),
+      topSuccess: success.rows.map((r, i) => ({
+        rank: i + 1, userAddress: r.user_address, successes: r.successes,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ============================================================
 //  공통 어댑터: attempts 행 → API 응답 형식
 // ============================================================
 function formatAttempt(row) {
@@ -436,6 +654,36 @@ function formatAttempt(row) {
     success: row.success,
     vrfRequestId: row.vrf_request_id,
     randomValue: row.random_value,
+    status: row.status,
+    requestedAt: row.requested_at,
+    completedAt: row.completed_at,
+    requestedTxHash: row.requested_tx_hash,
+    completedTxHash: row.completed_tx_hash,
+  };
+}
+
+/** advanced_attempts 행 → API 응답 형식 */
+function formatAdvancedAttempt(row) {
+  return {
+    attemptId: row.attempt_id,
+    userAddress: row.user_address,
+    itemId: row.item_id,
+    mode: row.mode,
+    modeLabel: row.mode === 0 ? 'safe' : row.mode === 1 ? 'risky' : null,
+    beforeExtraLevel: row.before_extra_level,
+    afterExtraLevel: row.after_extra_level,
+    beforeTotalLevel: row.before_total_level,
+    afterTotalLevel: row.after_total_level,
+    resultType: row.result_type,
+    resultLabel: row.result_type != null ? (RESULT_LABEL[row.result_type] ?? null) : null,
+    beforeSafeDropStreak: row.before_safe_drop_streak,
+    afterSafeDropStreak: row.after_safe_drop_streak,
+    guaranteed: row.guaranteed,
+    successRateBp: row.success_rate_bps,
+    destroyRateBp: row.destroy_rate_bps,
+    randomValue: row.random_value,
+    rollBp: row.roll_bps,
+    vrfRequestId: row.vrf_request_id,
     status: row.status,
     requestedAt: row.requested_at,
     completedAt: row.completed_at,
@@ -463,7 +711,7 @@ app.use((err, _req, res, _next) => {
 // ------------------------------------------------------------
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`[api] 서버 부팅 완료 (v3.0): http://localhost:${PORT}`);
+    console.log(`[api] 서버 부팅 완료 (v4.0): http://localhost:${PORT}`);
     try {
       const m = merkle.getInfo();
       console.log(`[api]   merkle allowlist: ${m.count}개 등록, root=${m.root.slice(0, 12)}…, type=${m.enhancementType}`);
