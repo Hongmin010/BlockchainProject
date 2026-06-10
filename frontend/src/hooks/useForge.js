@@ -131,7 +131,7 @@ export function useForge({ signer, provider, address }) {
 
   // ── 강화 실행 ────────────────────────────────────────────────
   const forge = useCallback(
-    async (itemId = 1, enhancementType = 0) => {
+    async (itemId = 1, enhancementType = 0, proof = []) => {
       if (!signer || !address) {
         setError('지갑이 연결되어 있지 않습니다.');
         return;
@@ -151,7 +151,11 @@ export function useForge({ signer, provider, address }) {
 
       try {
         const contract = getContract(signer);
-        const tx = await contract.requestEnhancement(itemId, enhancementType);
+        // proof가 있으면 Merkle gate 통과 버전으로 호출 (첫 강화)
+        const tx =
+          proof.length > 0
+            ? await contract.requestEnhancementWithProof(itemId, enhancementType, proof)
+            : await contract.requestEnhancement(itemId, enhancementType);
 
         // 트랜잭션 전송 완료 → VRF 대기 상태로 전환
         setIsPending(true);

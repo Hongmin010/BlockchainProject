@@ -7,6 +7,7 @@ import { useForge } from '../hooks/useForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
+  fetchMerkleProof,
   formatDateTime,
   shortenTx,
 } from '../api/api';
@@ -46,6 +47,10 @@ export default function Game({ address, onConnect, wallet }) {
     provider: wallet?.provider ?? null,
     address,
   });
+
+  // ── Merkle proof 상태 ────────────────────────────────────────
+  const [isFetchingProof, setIsFetchingProof] = useState(false);
+  const [proofError, setProofError] = useState(null);
 
   // ── 최근 강화 결과 (서버) ────────────────────────────────────
   const [recentAttempts, setRecentAttempts] = useState([]);
@@ -101,6 +106,27 @@ export default function Game({ address, onConnect, wallet }) {
         setRecentLoading(false);
       });
   }, [status]);
+
+  // ── 강화 버튼 핸들러 (level 0이면 proof 먼저 발급) ───────────
+  const handleForge = useCallback(async () => {
+    setProofError(null);
+    let proof = [];
+
+    if (level === 0) {
+      setIsFetchingProof(true);
+      try {
+        const result = await fetchMerkleProof(address, ITEM_ID, ENHANCEMENT_TYPE);
+        proof = result.proof;
+      } catch (err) {
+        setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
+        setIsFetchingProof(false);
+        return;
+      }
+      setIsFetchingProof(false);
+    }
+
+    forge(ITEM_ID, ENHANCEMENT_TYPE, proof);
+  }, [level, address, forge]);
 
   // ── 파티클 애니메이션 ────────────────────────────────────────
   const spawnParticles = useCallback((success) => {
@@ -230,6 +256,9 @@ export default function Game({ address, onConnect, wallet }) {
           {forgeError && (
             <div style={{ color: 'var(--fail)', fontSize: 13, marginTop: 4 }}>⚠ {forgeError}</div>
           )}
+          {proofError && (
+            <div style={{ color: 'var(--fail)', fontSize: 13, marginTop: 4 }}>🔒 {proofError}</div>
+          )}
 
           {/* 강화 로그 (lastResult) */}
           {lastResult && (
@@ -250,12 +279,18 @@ export default function Game({ address, onConnect, wallet }) {
             <Button
               variant="primary"
               size="xl"
-              onClick={() => forge(ITEM_ID, ENHANCEMENT_TYPE)}
-              disabled={level >= 5 || isForging || isPending}
-              loading={isForging}
+              onClick={handleForge}
+              disabled={level >= 5 || isForging || isPending || isFetchingProof}
+              loading={isForging || isFetchingProof}
               style={{ flex: '1 1 auto' }}
             >
-              {level >= 5 ? '🎉 최고 레벨!' : isPending ? '⏳ 결과 대기 중…' : '⚒ 강화 시도하기'}
+              {level >= 5
+                ? '🎉 최고 레벨!'
+                : isPending
+                ? '⏳ 결과 대기 중…'
+                : isFetchingProof
+                ? '🔑 등록 확인 중…'
+                : '⚒ 강화 시도하기'}
             </Button>
             <Button variant="secondary" size="xl" onClick={() => refreshState(ITEM_ID)}>
               새로고침
