@@ -1,6 +1,8 @@
-# KHU 블록체인 프로젝트 — 백엔드 (v3.0)
+# KHU 블록체인 프로젝트 — 백엔드 (v4.0)
 
-> **게임 확률 검증 백엔드** — 블록체인에 기록된 강화(Enhancement) 이벤트 3종을 인덱싱하여, 게임사가 광고한 확률과 실제 결과가 일치하는지 통계적으로 검증하고, Chainlink VRF 난수가 결과 산출에 정직하게 사용되었는지 재검증하며, 운영사의 확률표 변경 이력을 영구 보존한다.
+> **게임 확률 검증 백엔드** — 블록체인에 기록된 강화(Enhancement) 이벤트를 인덱싱하여, 게임사가 광고한 확률과 실제 결과가 일치하는지 통계적으로 검증하고, Chainlink VRF 난수가 결과 산출에 정직하게 사용되었는지 재검증하며, 운영사의 확률표 변경 이력을 영구 보존한다. v4 부터는 **고급강화(Safe/Risky/파괴/보장)** 와 **업적 NFT 조회**까지 다룬다 (컨트랙트 2개 인덱싱 + 1개 즉석 조회).
+
+> 🌐 **라이브 API**: `https://khu-blockchain-api.onrender.com` · 엔드포인트 상세 명세는 [docs/api.md](docs/api.md)
 
 ## 프로젝트 소개
 
@@ -28,32 +30,40 @@
 | 항목 | 값 |
 | --- | --- |
 | 네트워크 | Base Sepolia |
-| 컨트랙트 | `EnhancementGameVRF` — `0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59` (Merkle 버전) |
+| 기본 강화 | `EnhancementGameVRF` — `0x73e8bbe5ea755376ddd30ea1a2df3dae5d289a59` (Merkle 버전, **인덱싱**) |
+| 고급강화 | `AdvancedEnhancementGameVRF` — `0x4f1c8573446efc5ae48eb453cfc66fafe26c2f5c` (base 를 참조하는 별도 컨트랙트, **인덱싱**) |
+| 업적 NFT | `EnhancementAchievements` — `0xc65089C74f1A315962BE5e172255b568a29F491c` (**즉석 조회만** — 인덱싱 안 함) |
 | VRF Coordinator | `0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE` (v2.5) |
-| ABI | `abi/EnhancementGameVRF.json` (배포본 산출물) |
+| ABI | `abi/EnhancementGameVRF.json` · `abi/AdvancedEnhancementGameVRF.json` (배포본 산출물) |
 
 ## 폴더 구조
 
 ```
 backend/
 ├── indexer/            # 온체인 이벤트 인덱서 (체인 → DB 동기화)
-│   └── indexer.js      #   3개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
+│   └── indexer.js      #   2개 컨트랙트 · 6개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
 ├── api/                # REST API 서버 (DB → 클라이언트)
-│   └── server.js       #   8개 라우트 (/health + /api/*)
+│   └── server.js       #   13개 라우트 (/health + /api/*)
 ├── db/                 # PostgreSQL 스키마 + 연결 풀
-│   ├── schema.sql      #   4개 테이블 + 11개 인덱스 (v3 정렬)
+│   ├── schema.sql      #   6개 테이블 (v4 — 고급강화 반영)
 │   └── pool.js         #   lazy 싱글턴 풀 + withTransaction 헬퍼 (SSL 자동 분기)
-├── utils/              # 순수 함수 모음 (단위 테스트 대상)
-│   ├── stats.js        #   Wilson CI · 카이제곱 · fairnessVerdict
+├── utils/              # 순수 함수 모음 (단위 테스트 대상, 90개)
+│   ├── stats.js        #   Wilson CI · 카이제곱(1df/다항) · fairnessVerdict
 │   ├── verify.js       #   VRF off-chain 재검증 · 주소 정규화
+│   ├── advancedVerify.js    # 고급강화 결과 재검증 (컨트랙트 산출 로직 재현)
+│   ├── advancedStats.js     # 고급강화 통계 (Safe 이항 / Risky 3분 다항)
+│   ├── achievements.js      # 업적 NFT 조회 클라이언트 (RPC read-on-demand)
 │   └── merkle.js       #   Merkle proof 발급 (allowlist 트리 재구성)
 ├── abi/                # 배포본 ABI
-│   └── EnhancementGameVRF.json
+│   ├── EnhancementGameVRF.json
+│   └── AdvancedEnhancementGameVRF.json
 ├── merkle/             # allowlist (Merkle proof 발급용)
-│   └── allowlist.json  #   등록 목록 복원본 (온체인 root 와 일치 검증)
+│   ├── allowlist.json  #   등록 목록 (컨트랙트팀 claims 파일 기준, 온체인 root 자가검증)
+│   └── merkle-claims.baseSepolia.json  # 컨트랙트팀 원본 claims (201건, proof 포함)
 ├── docs/               # 문서
-│   ├── events.md       #   ★ 컨트랙트 팀과 합의된 3개 이벤트 명세 (v3)
-│   └── design_decisions.md  # ★ 설계 결정 기록
+│   ├── api.md          #   ★ 전체 API 명세 (프론트 연동용 — 요청/응답 예시)
+│   ├── events.md       #   컨트랙트 팀과 합의된 이벤트 명세 (v3)
+│   └── design_decisions.md  # 설계 결정 기록
 ├── .env.example        # 환경변수 템플릿 (로컬/클라우드 가이드 포함)
 ├── SETUP.md            # 로컬 환경 구축 가이드 (Windows 기준)
 ├── package.json
@@ -70,17 +80,20 @@ backend/
 
 - **Wilson 95% 신뢰구간** — 표본 크기를 반영한 실측 성공률 구간 추정.
 - **카이제곱 검정 (1자유도)** — "표기 확률(`successRate`)과 실측 결과가 통계적으로 유의미하게 다른가?" 를 p-value 로 정량화.
+- **다항 카이제곱 검정 (2자유도)** — 고급강화 Risky 모드의 성공/파괴/유지 3분 결과를 동시 검정. **표기 파괴율**(게임사가 가장 의심받는 확률)을 직접 검증한다. 보장강화(Guaranteed)는 확률 사건이 아니므로 표본에서 제외.
 - 결과를 `plausible / suspicious / insufficient_data` 3단계 라벨로 사용자에게 직관적으로 전달.
 
 → 사용자는 "체감상 확률이 낮다"는 주관적 의심을 객관적 지표로 확인할 수 있다.
 
-→ 엔드포인트: `GET /api/stats/by-level`, `GET /api/stats/global`, `GET /api/stats/user/:address`
+→ 엔드포인트: `GET /api/stats/by-level`, `GET /api/stats/global`, `GET /api/stats/user/:address`, `GET /api/advanced/stats`
 
 ### 2. VRF 재검증 (Off-chain Re-derivation)
 
 `EnhancementCompleted.randomValue` 와 `successRate` 를 가지고 컨트랙트의 결과 산출 로직(`(randomValue % 10000) < successRate`)을 백엔드에서 그대로 재현하여 시도 1건 단위로 검증한다. 컨트랙트가 난수를 받고도 다른 결과를 기록했다면 즉시 탐지된다.
 
-→ 엔드포인트: `GET /api/attempts/:attemptId`
+고급강화는 결과가 5종(유지/성공/하락/파괴/보장)이라 재검증도 확장됐다 — roll 비교뿐 아니라 **레벨·스트릭 전이, 보장강화 발동 조건, 모드별 확률 유효성까지 8개 체크**로 대조한다 (`utils/advancedVerify.js`).
+
+→ 엔드포인트: `GET /api/attempts/:attemptId`, `GET /api/advanced/attempts/:attemptId`
 
 ### 3. 확률표 변경 추적 (`ProbabilityTableUpdated` 이벤트)
 
@@ -96,32 +109,38 @@ backend/
 
 - **leaf** = `keccak256(abi.encode(user, itemId, type))` — 컨트랙트 `getEnhancementLeaf` 와 동일
 - **트리** = OZ 표준 정렬-쌍 keccak256, 홀수 노드 promote — 컨트랙트 `MerkleProof.sol` 과 100% 호환
-- **등록 목록**은 `merkle/allowlist.json` 에 보관. 인덱싱된 강화 이력에서 복원했으며,
-  계산한 root 가 온체인 `merkleRoot` 와 일치함을 모듈 로드 시 자가검증한다(불일치 시 부팅 경고).
-- 발급한 proof 는 온체인 `isValidEnhancementProof` 로 검증 완료.
+- **등록 목록**은 `merkle/allowlist.json` 에 보관 — **컨트랙트팀의 트리 생성 원본**(`merkle/merkle-claims.baseSepolia.json`, 201건)에서 생성했다. leaf 순서는 claims 배열 순서(컨트랙트 트리 생성 순서)이며, 계산한 root 가 온체인 `merkleRoot` 와 일치함을 모듈 로드 시 자가검증한다(불일치 시 부팅 경고).
+- 발급한 proof 는 온체인 `isValidEnhancementProof` 로 검증 완료 (컨트랙트팀 proof 와 201/201 동일 확인).
 
 → 엔드포인트: `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` (미등록 조합은 404)
 
-## 처리하는 이벤트 (총 3개)
+## 처리하는 이벤트 (컨트랙트 2개 · 총 6개)
 
 자세한 시그니처와 자료형 근거는 [docs/events.md](docs/events.md), 통합 결정 근거는 [docs/design_decisions.md](docs/design_decisions.md) 참고.
 
-| # | 이벤트 | 의미 | DB 매핑 |
-| --- | --- | --- | --- |
-| 1 | `EnhancementRequested` | 강화 요청 + VRF 송신 | `attempts` INSERT |
-| 2 | `EnhancementCompleted` | 강화 결과 + VRF 응답 | `attempts` UPDATE + `user_items` UPSERT (★ 한 트랜잭션) |
-| 3 | `ProbabilityTableUpdated` ★ | 확률표 변경 (관리자) | `probability_history` INSERT |
+| # | 컨트랙트 | 이벤트 | 의미 | DB 매핑 |
+| --- | --- | --- | --- | --- |
+| 1 | 기본 | `EnhancementRequested` | 강화 요청 + VRF 송신 | `attempts` INSERT |
+| 2 | 기본 | `EnhancementCompleted` | 강화 결과 + VRF 응답 | `attempts` UPDATE + `user_items` UPSERT (★ 한 트랜잭션) |
+| 3 | 기본 | `ProbabilityTableUpdated` ★ | 확률표 변경 (관리자) | `probability_history` INSERT |
+| 4 | 고급 | `AdvancedEnhancementRequested` | 고급강화 요청 | `advanced_attempts` UPSERT (pending) |
+| 5 | 고급 | `AdvancedEnhancementResult` | 고급강화 결과 (5종) | `advanced_attempts` UPSERT + `user_items` 갱신 (★ 한 트랜잭션) |
+| 6 | 고급 | `AdvancedRateUpdated` | 고급강화 확률 변경 | `advanced_rate_history` INSERT |
 
 > ★ **`user_items` 는 별도 이벤트 없이 백엔드가 자동 갱신한다.**
-> `EnhancementCompleted` 핸들러가 `attempts` UPDATE 와 같은 DB 트랜잭션 안에서 `user_items` UPSERT 를 함께 수행한다.
+> 기본 강화의 `EnhancementCompleted` 와 고급강화의 `AdvancedEnhancementResult` 핸들러가
+> 각자 attempts 갱신과 같은 DB 트랜잭션 안에서 `user_items` UPSERT 를 함께 수행한다.
+> 업적 NFT(`EnhancementAchievements`)는 인덱싱하지 않는다 — `/api/achievements/:address` 가 RPC 로 즉석 조회.
 
 ## API 엔드포인트 요약
 
-base URL — 로컬 `http://localhost:3000`, 클라우드 `https://<render-service>.onrender.com`. CORS 전체 허용. 모든 응답은 JSON, 에러는 `{ error, message? }` 형태.
+base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http://localhost:3000`. CORS 전체 허용. 모든 응답은 JSON, 에러는 `{ error, message? }` 형태.
+
+> **요청/응답 필드 상세 명세 + 예시는 [docs/api.md](docs/api.md)** — 프론트 연동 시 이 문서를 보면 된다.
 
 | Method · 경로 | 용도 | 프론트 화면 |
 | --- | --- | --- |
-| `GET /health` | 서버/DB 헬스체크 | (운영) |
+| `GET /health` | 서버/DB 헬스체크 (콜드스타트 워밍업 겸용) | (운영) |
 | `GET /api/stats/global` | 전체 누적 통계 | Dashboard |
 | `GET /api/stats/by-level` ★ | 단계별 표기 vs 실측 + 통계 검정 | Dashboard |
 | `GET /api/stats/user/:address` | 사용자 시도 통계 + 보유 아이템 | Records |
@@ -129,6 +148,11 @@ base URL — 로컬 `http://localhost:3000`, 클라우드 `https://<render-servi
 | `GET /api/attempts/:attemptId` ★ | 시도 1건 상세 + VRF 재검증 | Verify |
 | `GET /api/probability/history?level=<n>` ★ | 확률표 변경 이력 | Dashboard |
 | `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` | allowlist Merkle proof 발급 (강화 요청용) | Game (강화) |
+| `GET /api/advanced/attempts/recent` `[?user=<addr>]` | 고급강화 최근 시도 목록 | Dashboard / Records |
+| `GET /api/advanced/attempts/:attemptId` ★ | 고급강화 1건 상세 + 결과 재검증 (8개 체크) | Verify |
+| `GET /api/advanced/stats` ★ | 고급강화 모드·단계별 통계 검정 (파괴율 포함) | Dashboard |
+| `GET /api/ranking?limit=<n>` | 랭킹 3종 (최고 아이템 / 도전왕 / 성공왕) | Ranking |
+| `GET /api/achievements/:address` `[?itemId=<n>]` | 업적 NFT 발급 여부 + 클레임 가능 여부 (온체인 즉석 조회) | Records / Game |
 
 > **프론트엔드 안내:** 프론트는 Supabase 에 직접 접근하지 않는다. 위 REST API 만 호출한다(백엔드가 게이트키퍼). 단, **"강화 시도"(Game 페이지)는 백엔드가 아니라 지갑으로 컨트랙트에 직접 트랜잭션을 보내는 동작**이다 — 백엔드는 읽기 전용 검증 + 강화에 필요한 Merkle proof 발급(`/api/merkle/proof`)을 담당한다. (컨트랙트 `merkleRoot` 게이트 때문에 **등록된 `(user, itemId, type)` 만** 강화 가능 — 미등록 지갑/아이템은 proof 가 안 나온다.)
 
@@ -140,12 +164,13 @@ npm install
 
 # 2) 환경변수 설정
 cp .env.example .env
-# .env 에 RPC_URL, CONTRACT_ADDRESS, DATABASE_URL 채우기
+# .env 에 RPC_URL, CONTRACT_ADDRESS, ADVANCED_CONTRACT_ADDRESS,
+#         ACHIEVEMENT_CONTRACT_ADDRESS, DATABASE_URL 채우기
 
 # 3) DB 스키마 적용
 psql "$DATABASE_URL" -f db/schema.sql
 
-# 4) 단위 테스트 (42개 — DB 불필요)
+# 4) 단위 테스트 (90개 — DB/네트워크 불필요)
 npm test
 
 # 5) 인덱서 실행 (별도 터미널)
@@ -199,8 +224,10 @@ Supabase 무료 tier 의 **Direct 연결(`db.<ref>.supabase.co:5432`)은 IPv6 �
 1. Supabase 프로젝트 생성(서울) → 보안 3옵션 OFF
 2. Session Pooler URL 로 `db/schema.sql` 적용 → 테이블 4개 확인
 3. 저장소 루트 `render.yaml` 로 Render Blueprint 생성
-4. Render 환경변수 입력: `DATABASE_URL`(Transaction Pooler 6543), `RPC_URL`, `CONTRACT_ADDRESS`, `DATABASE_SSL=true`
+4. Render 환경변수 입력: `DATABASE_URL`(Transaction Pooler 6543), `RPC_URL`, `CONTRACT_ADDRESS` (`DATABASE_SSL`/`ACHIEVEMENT_CONTRACT_ADDRESS` 는 render.yaml 이 자동 설정)
 5. 배포 후 `/health` 가 `{ db: true }` 인지 확인 → 팀에 API URL 공유
+
+> ✅ **2026-06-10 배포 완료**: `https://khu-blockchain-api.onrender.com` — main 브랜치 push 시 자동 재배포(autoDeploy).
 
 ### 발표 당일 주의 — 콜드스타트 / 일시정지
 
@@ -256,6 +283,7 @@ V1의 사고는 "온체인 이벤트마다 DB 테이블이 1:1로 매핑된다"�
 
 ## 관련 문서
 
+- [docs/api.md](docs/api.md) — ★ 전체 API 명세 (프론트 연동용 — 요청/응답 예시)
 - [docs/events.md](docs/events.md) — 3개 이벤트 명세 (v3) + V2→V3 매핑
 - [docs/design_decisions.md](docs/design_decisions.md) — 설계 결정 기록
 - [db/schema.sql](db/schema.sql) — DB 스키마 + 자료형 매핑 근거
