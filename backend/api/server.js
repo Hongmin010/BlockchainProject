@@ -45,6 +45,8 @@
  *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
+ *   GET /api/achievements/:address       업적 NFT 발급 여부 조회 (T10, RPC read-on-demand)
+ *
  *  ※ 차별화 포인트 매핑
  *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
  *        → /api/stats/by-level, /api/stats/global, /api/stats/user/:address
@@ -67,6 +69,7 @@ const {
   verifyAdvancedAttempt, fromDbRow: advFromDbRow, RESULT_LABEL,
 } = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
+const { createAchievementsClient } = require('../utils/achievements');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -636,6 +639,71 @@ app.get('/api/ranking', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+
+// ============================================================
+//  /api/achievements/* — 업적 NFT 발급 여부 조회 (T10)
+// ============================================================
+
+//  DB 를 거치지 않고 RPC view 호출로 즉석 조회한다 (utils/achievements.js
+//  머리말 참고). RPC_URL / ACHIEVEMENT_CONTRACT_ADDRESS 미설정 환경에서도
+//  서버 부팅은 막지 않고, 해당 라우트만 503 으로 응답한다.
+const achievementsClient = createAchievementsClient({
+  rpcUrl: process.env.RPC_URL,
+  contractAddress: process.env.ACHIEVEMENT_CONTRACT_ADDRESS,
+});
+
+/**
+ * GET /api/achievements/:address?itemId=72
+ *
+ *  반환
+ *  ----
+ *   200 {
+ *     user, contract,
+ *     achievements: [{ achievementId, key, label, description, claimed }],
+ *     // ?itemId= 지정 시에만:
+ *     itemId, canClaimMaxEnhancement,   // 해당 아이템으로 최대강화 업적 클레임 가능 여부
+ *   }
+ *   400 { error:'invalid_address' | 'invalid_itemId' }
+ *   502 { error:'rpc_error' }                       ← RPC 장애 (우리 서버 문제 아님)
+ *   503 { error:'achievements_not_configured' }     ← 환경변수 미설정
+ */
+app.get('/api/achievements/:address', async (req, res) => {
+  if (!achievementsClient.isConfigured()) {
+    return res.status(503).json({
+      error: 'achievements_not_configured',
+      message: 'RPC_URL / ACHIEVEMENT_CONTRACT_ADDRESS 환경변수가 필요합니다',
+    });
+  }
+
+  const user = normalizeAddress(req.params.address);
+  if (!user) {
+    return res.status(400).json({ error: 'invalid_address', message: 'address must match /^0x[a-fA-F0-9]{40}$/' });
+  }
+
+  let itemId = null;
+  if (req.query.itemId !== undefined) {
+    try {
+      itemId = BigInt(req.query.itemId);
+      if (itemId < 0n) throw new Error('negative');
+    } catch {
+      return res.status(400).json({ error: 'invalid_itemId', message: 'itemId must be a non-negative integer' });
+    }
+  }
+
+  try {
+    const achievements = await achievementsClient.getUserAchievements(user);
+    const out = { user, contract: achievementsClient.address, achievements };
+    if (itemId !== null) {
+      out.itemId = itemId.toString();
+      out.canClaimMaxEnhancement = await achievementsClient.canClaimMaxEnhancement(user, itemId);
+    }
+    return res.json(out);
+  } catch (err) {
+    console.error('[api] /api/achievements RPC 오류:', err.message);
+    return res.status(502).json({ error: 'rpc_error', message: err.message });
   }
 });
 
