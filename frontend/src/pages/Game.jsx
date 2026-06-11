@@ -1,10 +1,10 @@
 import { useEffect, useCallback } from 'react';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode, AdvancedResultType } from '../hooks/useAdvancedForge';
+import { useAdvancedForge, AdvancedMode } from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
@@ -18,9 +18,10 @@ import {
   latestAdvancedRates,
 } from '../api/api';
 import CatList from './Game/CatList';
+import ForgeStage from './Game/ForgeStage';
 import ProbabilityCard from './Game/ProbabilityCard';
 import RecentAttemptsCard from './Game/RecentAttemptsCard';
-import { CAT_EMOJIS } from './Game/constants';
+import { ADV_RESULT_INFO } from './Game/constants';
 import styles from './Game.module.css';
 
 // 확률표 (컨트랙트 기본값 — API 로드 전 폴백)
@@ -42,18 +43,8 @@ const DEFAULT_ADV_PROB_TABLE = [
 
 const ENHANCEMENT_TYPE = 0;
 
-// 상급 결과 타입별 표시 정보
-const ADV_RESULT_INFO = {
-  [AdvancedResultType.FailKeep]:      { label: '✕ 실패 (유지)',  logStyle: 'logFail',       badgeStyle: 'resultFail' },
-  [AdvancedResultType.Success]:       { label: '✓ 성공!',        logStyle: 'logSuccess',    badgeStyle: 'resultSuccess' },
-  [AdvancedResultType.SafeDowngrade]: { label: '↓ 단계 하락',    logStyle: 'logDowngrade',  badgeStyle: 'resultDowngrade' },
-  [AdvancedResultType.Destroyed]:     { label: '💥 파괴!',        logStyle: 'logDestroyed',  badgeStyle: 'resultDestroyed' },
-  [AdvancedResultType.Guaranteed]:    { label: '🌟 보장 성공!',   logStyle: 'logGuaranteed', badgeStyle: 'resultGuaranteed' },
-};
-
 export default function Game({ address, onConnect, wallet }) {
   const navigate = useNavigate();
-  const stageRef = useRef(null);
 
   // ── useForge 훅 (일반 강화 0~5단계) ─────────────────────────
   const {
@@ -314,42 +305,6 @@ export default function Game({ address, onConnect, wallet }) {
     }
   }, [isAdvancedMode, address, selectedItemId, forge, advForge]);
 
-  // ── 파티클 애니메이션 ─────────────────────────────────────────
-  const spawnParticles = useCallback((resultTypeOrBool) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    let colors, count;
-    if (resultTypeOrBool === AdvancedResultType.Destroyed) {
-      colors = ['#ff3300', '#ff6600', '#cc0000']; count = 14;
-    } else if (resultTypeOrBool === AdvancedResultType.Guaranteed) {
-      colors = ['#ffd700', '#ffaa00', '#fff080']; count = 12;
-    } else if (resultTypeOrBool === AdvancedResultType.SafeDowngrade) {
-      colors = ['#e8623c', '#f08060']; count = 4;
-    } else if (resultTypeOrBool === AdvancedResultType.Success || resultTypeOrBool === true) {
-      colors = ['#5fc37a', '#a8f0bc']; count = 8;
-    } else {
-      colors = ['#e8623c', '#f0a090']; count = 4;
-    }
-    for (let i = 0; i < count; i++) {
-      const p = document.createElement('div');
-      p.className = styles.particle;
-      p.style.background = colors[Math.floor(Math.random() * colors.length)];
-      p.style.left = 30 + Math.random() * 40 + '%';
-      p.style.bottom = '30%';
-      p.style.animationDelay = Math.random() * 0.3 + 's';
-      stage.appendChild(p);
-      setTimeout(() => p.remove(), 1200);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (lastResult) spawnParticles(lastResult.success);
-  }, [lastResult, spawnParticles]);
-
-  useEffect(() => {
-    if (advLastResult) spawnParticles(advLastResult.resultType);
-  }, [advLastResult, spawnParticles]);
-
   // ── 지갑 미연결 ──────────────────────────────────────────────
   if (!address) {
     return (
@@ -372,18 +327,6 @@ export default function Game({ address, onConnect, wallet }) {
     : status === 'waiting_tx' || status === 'waiting_vrf';
 
   const currentProb = !isAdvancedMode ? (probTable[level]?.prob ?? 0) : null;
-
-  // 스테이지 이펙트 상태
-  let stageState = null;
-  if (isAdvancedMode && advLastResult) {
-    if (advLastResult.resultType === AdvancedResultType.Destroyed) stageState = 'destroyed';
-    else if (advLastResult.success) stageState = 'success';
-    else stageState = 'fail';
-  } else if (!isAdvancedMode && lastResult) {
-    stageState = lastResult.success ? 'success' : 'fail';
-  }
-
-  const advResultInfo = advLastResult != null ? ADV_RESULT_INFO[advLastResult.resultType] : null;
 
   return (
     <div className={styles.page}>
@@ -449,46 +392,13 @@ export default function Game({ address, onConnect, wallet }) {
           </div>
 
           {/* 고양이 무대 */}
-          <div
-            ref={stageRef}
-            className={`${styles.stage}
-              ${stageState === 'success' ? styles.stageSuccess : ''}
-              ${stageState === 'fail' ? styles.stageFail : ''}
-              ${stageState === 'destroyed' ? styles.stageDestroyed : ''}`}
-          >
-            <div className={styles.checker} />
-
-            {stageState && (
-              <div
-                className={`${styles.resultBadge} ${
-                  isAdvancedMode && advResultInfo
-                    ? styles[advResultInfo.badgeStyle]
-                    : stageState === 'success'
-                    ? styles.resultSuccess
-                    : styles.resultFail
-                }`}
-              >
-                {isAdvancedMode && advResultInfo
-                  ? advResultInfo.label
-                  : stageState === 'success'
-                  ? '✓ 성공!'
-                  : '✕ 실패'}
-              </div>
-            )}
-
-            <div
-              className={`${styles.cat}
-                ${stageState === 'success' ? styles.catBounce : ''}
-                ${stageState === 'fail' || stageState === 'destroyed' ? styles.catShake : ''}
-                ${isForging && !stageState ? styles.catWait : ''}`}
-            >
-              {CAT_EMOJIS[Math.min(displayLevel, CAT_EMOJIS.length - 1)]}
-            </div>
-
-            <div className={`${styles.lvBadge} ${isAdvancedMode ? styles.lvBadgeAdvanced : ''}`}>
-              LV. {displayLevel}
-            </div>
-          </div>
+          <ForgeStage
+            isAdvancedMode={isAdvancedMode}
+            displayLevel={displayLevel}
+            isForging={isForging}
+            lastResult={lastResult}
+            advLastResult={advLastResult}
+          />
 
           {/* 상급 강화 해금 알림 */}
           {showAdvancedUnlock && (
