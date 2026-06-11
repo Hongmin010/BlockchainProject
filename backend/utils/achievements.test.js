@@ -17,12 +17,13 @@ const { ACHIEVEMENTS, createAchievementsClient } = require('./achievements');
 // ------------------------------------------------------------
 //  mock contract — 호출 인자를 기록하고 정해진 답을 돌려준다
 // ------------------------------------------------------------
-function mockContract({ claimedIds = [], canClaim = false } = {}) {
+function mockContract({ claimedIds = [], claimedByUser = null, canClaim = false } = {}) {
   const calls = { hasAchievement: [], canClaimMaxEnhancement: [] };
   return {
     calls,
     async hasAchievement(user, achievementId) {
       calls.hasAchievement.push({ user, achievementId });
+      if (claimedByUser) return (claimedByUser[user] || []).includes(achievementId);
       return claimedIds.includes(achievementId);
     },
     async canClaimMaxEnhancement(user, itemId) {
@@ -108,4 +109,46 @@ test('canClaimMaxEnhancement: RPC 에러는 그대로 전파 (라우트에서 50
   };
   const client = createAchievementsClient({ contract });
   await assert.rejects(() => client.canClaimMaxEnhancement('0xUSER', '1'), /rpc down/);
+});
+
+
+// ------------------------------------------------------------
+//  getAchievementHolders
+// ------------------------------------------------------------
+test('getAchievementHolders: 보유 수 내림차순, 동률은 주소 오름차순, 미보유 제외', async () => {
+  const contract = mockContract({
+    claimedByUser: {
+      '0xbbb': [1], // 1개 보유
+      '0xaaa': [1], // 1개 보유 (동률 — 주소가 앞서므로 먼저)
+      '0xccc': [],  // 미보유 → 제외
+    },
+  });
+  const client = createAchievementsClient({ contract });
+
+  const holders = await client.getAchievementHolders(['0xbbb', '0xccc', '0xaaa']);
+
+  assert.deepEqual(holders, [
+    { userAddress: '0xaaa', claimedCount: 1, claimedKeys: ['max_enhancement'] },
+    { userAddress: '0xbbb', claimedCount: 1, claimedKeys: ['max_enhancement'] },
+  ]);
+  // 모든 후보 × 레지스트리 전체를 조회했는지
+  assert.equal(contract.calls.hasAchievement.length, 3 * ACHIEVEMENTS.length);
+});
+
+test('getAchievementHolders: 아무도 미보유 → 빈 배열', async () => {
+  const client = createAchievementsClient({ contract: mockContract({ claimedByUser: {} }) });
+  assert.deepEqual(await client.getAchievementHolders(['0xaaa', '0xbbb']), []);
+});
+
+test('getAchievementHolders: 후보가 없으면 RPC 호출 없이 빈 배열', async () => {
+  const contract = mockContract();
+  const client = createAchievementsClient({ contract });
+  assert.deepEqual(await client.getAchievementHolders([]), []);
+  assert.equal(contract.calls.hasAchievement.length, 0);
+});
+
+test('getAchievementHolders: RPC 에러는 그대로 전파 (라우트에서 502 처리)', async () => {
+  const contract = { async hasAchievement() { throw new Error('rpc down'); } };
+  const client = createAchievementsClient({ contract });
+  await assert.rejects(() => client.getAchievementHolders(['0xaaa']), /rpc down/);
 });

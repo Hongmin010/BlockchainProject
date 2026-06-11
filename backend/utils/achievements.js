@@ -93,6 +93,32 @@ function createAchievementsClient({ rpcUrl, contractAddress, contract } = {}) {
     async canClaimMaxEnhancement(user, itemId) {
       return Boolean(await getContract().canClaimMaxEnhancement(user, itemId));
     },
+
+    /**
+     * 주소 목록 중 업적을 1개 이상 보유한 지갑의 목록.
+     * 후보 주소는 호출자가 공급한다 (API 라우트는 attempts 테이블의
+     * distinct user 를 사용 — 강화를 한 번도 안 한 지갑은 업적이 있을 수 없음).
+     *
+     *  정렬: 보유 업적 수 내림차순, 동률이면 주소 오름차순(결정적 순서 보장).
+     *  미보유(0개) 주소는 제외한다.
+     *
+     * @param {string[]} users 소문자 주소 배열
+     * @returns {Promise<[{ userAddress, claimedCount, claimedKeys }]>}
+     */
+    async getAchievementHolders(users) {
+      const c = getContract();
+      const rows = await Promise.all(users.map(async (user) => {
+        const claimed = await Promise.all(
+          ACHIEVEMENTS.map((a) => c.hasAchievement(user, a.achievementId)),
+        );
+        const claimedKeys = ACHIEVEMENTS.filter((_, i) => claimed[i]).map((a) => a.key);
+        return { userAddress: user, claimedCount: claimedKeys.length, claimedKeys };
+      }));
+      return rows
+        .filter((r) => r.claimedCount > 0)
+        .sort((x, y) => y.claimedCount - x.claimedCount
+          || (x.userAddress < y.userAddress ? -1 : 1));
+    },
   };
 }
 

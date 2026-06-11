@@ -43,11 +43,11 @@ backend/
 ├── indexer/            # 온체인 이벤트 인덱서 (체인 → DB 동기화)
 │   └── indexer.js      #   2개 컨트랙트 · 6개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
 ├── api/                # REST API 서버 (DB → 클라이언트)
-│   └── server.js       #   13개 라우트 (/health + /api/*)
+│   └── server.js       #   16개 라우트 (/health + /api/*)
 ├── db/                 # PostgreSQL 스키마 + 연결 풀
 │   ├── schema.sql      #   6개 테이블 (v4 — 고급강화 반영)
 │   └── pool.js         #   lazy 싱글턴 풀 + withTransaction 헬퍼 (SSL 자동 분기)
-├── utils/              # 순수 함수 모음 (단위 테스트 대상, 90개)
+├── utils/              # 순수 함수 모음 (단위 테스트 대상, 99개)
 │   ├── stats.js        #   Wilson CI · 카이제곱(1df/다항) · fairnessVerdict
 │   ├── verify.js       #   VRF off-chain 재검증 · 주소 정규화
 │   ├── advancedVerify.js    # 고급강화 결과 재검증 (컨트랙트 산출 로직 재현)
@@ -99,7 +99,7 @@ backend/
 
 `probability_history` 테이블로 **언제, 어느 단계의 확률을, 얼마에서 얼마로 바꿨는지**를 영구 기록한다. 운영사의 사일런트 너프(silent nerf)를 차단하고 모든 변경에 감사 기록을 남긴다.
 
-→ 엔드포인트: `GET /api/probability/history?level=<n>`
+→ 엔드포인트: `GET /api/probability/history?level=<n>`, `GET /api/advanced/rates/history` (고급강화판)
 
 ## Merkle allowlist proof 발급 (강화 게이트 대응)
 
@@ -152,7 +152,9 @@ base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http:
 | `GET /api/advanced/attempts/recent` `[?user=<addr>]` | 고급강화 최근 시도 목록 | Dashboard / Records |
 | `GET /api/advanced/attempts/:attemptId` ★ | 고급강화 1건 상세 + 결과 재검증 (8개 체크) | Verify |
 | `GET /api/advanced/stats` ★ | 고급강화 모드·단계별 통계 검정 (파괴율 포함) | Dashboard |
+| `GET /api/advanced/rates/history` `[?mode=<0\|1>&extraLevel=<n>]` ★ | 고급강화 확률표 변경 이력 | Dashboard |
 | `GET /api/ranking?limit=<n>` | 랭킹 3종 (최고 아이템 / 도전왕 / 성공왕) | Ranking |
+| `GET /api/achievements/holders` | 업적 NFT 보유자 목록 (온체인 즉석 조회) | Ranking |
 | `GET /api/achievements/:address` `[?itemId=<n>]` | 업적 NFT 발급 여부 + 클레임 가능 여부 (온체인 즉석 조회) | Records / Game |
 
 > **프론트엔드 안내:** 프론트는 Supabase 에 직접 접근하지 않는다. 위 REST API 만 호출한다(백엔드가 게이트키퍼). 단, **"강화 시도"(Game 페이지)는 백엔드가 아니라 지갑으로 컨트랙트에 직접 트랜잭션을 보내는 동작**이다 — 백엔드는 읽기 전용 검증 + 강화에 필요한 Merkle proof 발급(`/api/merkle/proof`)을 담당한다. (컨트랙트 `merkleRoot` 게이트 때문에 **등록된 `(user, itemId, type)` 만** 강화 가능 — 미등록 지갑/아이템은 proof 가 안 나온다.)
@@ -171,7 +173,7 @@ cp .env.example .env
 # 3) DB 스키마 적용
 psql "$DATABASE_URL" -f db/schema.sql
 
-# 4) 단위 테스트 (90개 — DB/네트워크 불필요)
+# 4) 단위 테스트 (99개 — DB/네트워크 불필요)
 npm test
 
 # 5) 인덱서 실행 (별도 터미널)

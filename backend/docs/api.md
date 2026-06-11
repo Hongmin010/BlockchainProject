@@ -274,6 +274,32 @@
 
 > 데이터가 없는 그룹은 배열에서 빠진다. 고급강화 시도가 0건이면 `{ "safe": [], "risky": [] }`.
 
+### `GET /api/advanced/rates/history?mode=0&extraLevel=1` ★
+
+`/api/probability/history` 의 고급강화판 — `AdvancedRateUpdated` 이벤트로 쌓인 확률표 변경 이력. **대시보드에서 "공개확률(최신) vs 실측확률" 비교 시 공개확률 기준으로 사용** (각 (mode, extraLevel) 그룹의 첫 번째 항목이 현재 적용 확률).
+
+`mode`(0=Safe, 1=Risky, 선택) / `extraLevel`(0~255, 선택) 필터. 최신 → 과거 순 (같은 블록 내 여러 건은 logIndex 내림차순).
+
+```json
+{
+  "mode": null,
+  "extraLevel": null,
+  "history": [
+    {
+      "mode": 1, "extraLevel": 4, "updater": "0x7649...1ec9",
+      "oldSuccessRateBp": 2500, "newSuccessRateBp": 5000,
+      "oldDestroyRateBp": 2500, "newDestroyRateBp": 4000,
+      "onChainTimestamp": "2026-06-10T12:44:14.000Z",
+      "txHash": "0x...", "logIndex": 8, "blockNumber": 42663583
+    }
+  ]
+}
+```
+
+- `oldSuccessRateBp`/`oldDestroyRateBp`: 최초 설정 이벤트면 이전 값이 0 으로 기록될 수 있음 (컨트랙트가 보내준 값 그대로)
+- 변경 이력이 없으면 `history: []` (에러 아님)
+- 400 `invalid_mode` / `invalid_extra_level`
+
 ---
 
 ## 랭킹
@@ -298,6 +324,26 @@
 ---
 
 ## 업적 NFT (EnhancementAchievements)
+
+### `GET /api/achievements/holders`
+
+업적 NFT 보유자 목록. 강화 이력이 있는 지갑(attempts/advanced_attempts의 distinct user)을 대상으로 업적 보유 여부를 **온체인에서 즉석 조회**한다. 보유 업적 수 내림차순(동률은 주소 오름차순), 미보유 지갑은 빠진다.
+
+```json
+{
+  "contract": "0xc65089C74f1A315962BE5e172255b568a29F491c",
+  "totalAchievements": 1,
+  "usersChecked": 3,
+  "holders": [
+    { "userAddress": "0x9a7f...9aff", "claimedCount": 1, "claimedKeys": ["max_enhancement"] }
+  ]
+}
+```
+
+- `usersChecked`: 조회한 후보 지갑 수 (강화 이력 보유 지갑, 최대 500)
+- `claimedKeys`: 보유 업적의 key 목록 — 라벨/설명은 `/api/achievements/:address` 응답과 동일한 레지스트리 기준
+- 아직 아무도 클레임하지 않았으면 `holders: []` (에러 아님)
+- 502 `rpc_error` / 503 `achievements_not_configured`: 아래 업적 조회 API와 동일
 
 ### `GET /api/achievements/:address?itemId=1`
 

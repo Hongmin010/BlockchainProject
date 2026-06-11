@@ -44,8 +44,10 @@
  *   GET /api/advanced/attempts/recent    고급강화 최근 시도 목록
  *   GET /api/advanced/attempts/:id       ★ 고급강화 시도 1건 + 재검증 (T5)
  *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
+ *   GET /api/advanced/rates/history      ★ 고급강화 확률표 변경 이력
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
+ *   GET /api/achievements/holders        업적 NFT 보유자 목록 (RPC read-on-demand)
  *   GET /api/achievements/:address       업적 NFT 발급 여부 조회 (T10, RPC read-on-demand)
  *
  *  ※ 차별화 포인트 매핑
@@ -54,7 +56,7 @@
  *     #2 VRF 재검증 (off-chain re-derivation)
  *        → /api/attempts/:attemptId
  *     #3 확률표 변경 추적
- *        → /api/probability/history
+ *        → /api/probability/history, /api/advanced/rates/history
  * ============================================================
  */
 
@@ -70,7 +72,7 @@ const {
   verifyAdvancedAttempt, fromDbRow: advFromDbRow, RESULT_LABEL,
 } = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
-const { createAchievementsClient } = require('../utils/achievements');
+const { createAchievementsClient, ACHIEVEMENTS } = require('../utils/achievements');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -669,6 +671,68 @@ app.get('/api/advanced/stats', async (_req, res, next) => {
   }
 });
 
+/**
+ * GET /api/advanced/rates/history   ★ 고급강화 확률표 변경 이력
+ *
+ *  /api/probability/history 의 고급강화판. 인덱서가 AdvancedRateUpdated
+ *  이벤트로 쌓아둔 advanced_rate_history 를 최신순으로 내려준다.
+ *  프론트 대시보드가 "공개확률(최신) vs 실측확률" 비교 기준으로 사용.
+ *
+ *  쿼리(선택): ?mode=0&extraLevel=1 — 특정 그룹만 필터.
+ *  정렬: block_number DESC, log_index DESC
+ *        (한 tx 로 여러 그룹을 설정하면 같은 블록에 여러 건이 묶이므로
+ *         log_index 2차 정렬로 순서를 결정적으로 만든다)
+ */
+app.get('/api/advanced/rates/history', async (req, res, next) => {
+  let mode = null;
+  if (req.query.mode !== undefined) {
+    const parsed = Number(req.query.mode);
+    if (parsed !== 0 && parsed !== 1) {
+      return res.status(400).json({ error: 'invalid_mode' }); // 0=Safe, 1=Risky
+    }
+    mode = parsed;
+  }
+  let extraLevel = null;
+  if (req.query.extraLevel !== undefined) {
+    const parsed = Number(req.query.extraLevel);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 255) {
+      return res.status(400).json({ error: 'invalid_extra_level' });
+    }
+    extraLevel = parsed;
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT mode, extra_level, updater,
+             old_success_rate, new_success_rate,
+             old_destroy_rate, new_destroy_rate,
+             on_chain_timestamp, tx_hash, log_index, block_number
+        FROM advanced_rate_history
+       WHERE ($1::int IS NULL OR mode = $1)
+         AND ($2::int IS NULL OR extra_level = $2)
+       ORDER BY block_number DESC, log_index DESC
+    `, [mode, extraLevel]);
+    res.json({
+      mode,
+      extraLevel,
+      history: rows.map((row) => ({
+        mode: row.mode,
+        extraLevel: row.extra_level,
+        updater: row.updater,
+        oldSuccessRateBp: row.old_success_rate,
+        newSuccessRateBp: row.new_success_rate,
+        oldDestroyRateBp: row.old_destroy_rate,
+        newDestroyRateBp: row.new_destroy_rate,
+        onChainTimestamp: row.on_chain_timestamp,
+        txHash: row.tx_hash,
+        logIndex: row.log_index,
+        blockNumber: Number(row.block_number),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 // ============================================================
 //  /api/ranking — 랭킹 (T7)
@@ -756,6 +820,63 @@ app.get('/api/ranking', async (req, res, next) => {
 const achievementsClient = createAchievementsClient({
   rpcUrl: process.env.RPC_URL,
   contractAddress: process.env.ACHIEVEMENT_CONTRACT_ADDRESS,
+});
+
+/**
+ * GET /api/achievements/holders
+ *
+ *  업적 NFT 보유자 목록 — 보유 업적 수 내림차순 (동률 시 주소 오름차순).
+ *  미보유(0개) 지갑은 목록에서 제외.
+ *
+ *  데이터 흐름: 후보 주소는 attempts/advanced_attempts 의 distinct user
+ *  (강화 이력 없는 지갑은 업적이 있을 수 없음) → 주소별 hasAchievement
+ *  RPC view 조회 (read-on-demand, utils/achievements.js 머리말 참고).
+ *
+ *  ※ :address 라우트보다 먼저 등록해야 'holders' 가 주소로 매칭되지 않는다.
+ *
+ *  반환:
+ *   200 { contract, totalAchievements, usersChecked,
+ *         holders: [{ userAddress, claimedCount, claimedKeys }] }
+ *   502 { error:'rpc_error' }                       ← RPC 장애
+ *   503 { error:'achievements_not_configured' }     ← 환경변수 미설정
+ */
+app.get('/api/achievements/holders', async (_req, res, next) => {
+  if (!achievementsClient.isConfigured()) {
+    return res.status(503).json({
+      error: 'achievements_not_configured',
+      message: 'RPC_URL / ACHIEVEMENT_CONTRACT_ADDRESS 환경변수가 필요합니다',
+    });
+  }
+
+  let users;
+  try {
+    // 후보 상한 500: RPC 호출 수 = 주소 수 × 업적 수 라서 무한정 늘리지 않는다.
+    const { rows } = await db.query(`
+      SELECT DISTINCT user_address FROM (
+        SELECT user_address FROM attempts
+        UNION
+        SELECT user_address FROM advanced_attempts
+      ) t
+      ORDER BY user_address
+      LIMIT 500
+    `);
+    users = rows.map((r) => r.user_address);
+  } catch (err) {
+    return next(err); // DB 장애는 공통 500 핸들러로
+  }
+
+  try {
+    const holders = await achievementsClient.getAchievementHolders(users);
+    return res.json({
+      contract: achievementsClient.address,
+      totalAchievements: ACHIEVEMENTS.length,
+      usersChecked: users.length,
+      holders,
+    });
+  } catch (err) {
+    console.error('[api] /api/achievements/holders RPC 오류:', err.message);
+    return res.status(502).json({ error: 'rpc_error', message: err.message });
+  }
 });
 
 /**
