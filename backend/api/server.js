@@ -46,6 +46,7 @@
  *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
+ *   GET /api/achievements/holders        업적 NFT 보유자 목록 (RPC read-on-demand)
  *   GET /api/achievements/:address       업적 NFT 발급 여부 조회 (T10, RPC read-on-demand)
  *
  *  ※ 차별화 포인트 매핑
@@ -70,7 +71,7 @@ const {
   verifyAdvancedAttempt, fromDbRow: advFromDbRow, RESULT_LABEL,
 } = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
-const { createAchievementsClient } = require('../utils/achievements');
+const { createAchievementsClient, ACHIEVEMENTS } = require('../utils/achievements');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -756,6 +757,63 @@ app.get('/api/ranking', async (req, res, next) => {
 const achievementsClient = createAchievementsClient({
   rpcUrl: process.env.RPC_URL,
   contractAddress: process.env.ACHIEVEMENT_CONTRACT_ADDRESS,
+});
+
+/**
+ * GET /api/achievements/holders
+ *
+ *  업적 NFT 보유자 목록 — 보유 업적 수 내림차순 (동률 시 주소 오름차순).
+ *  미보유(0개) 지갑은 목록에서 제외.
+ *
+ *  데이터 흐름: 후보 주소는 attempts/advanced_attempts 의 distinct user
+ *  (강화 이력 없는 지갑은 업적이 있을 수 없음) → 주소별 hasAchievement
+ *  RPC view 조회 (read-on-demand, utils/achievements.js 머리말 참고).
+ *
+ *  ※ :address 라우트보다 먼저 등록해야 'holders' 가 주소로 매칭되지 않는다.
+ *
+ *  반환:
+ *   200 { contract, totalAchievements, usersChecked,
+ *         holders: [{ userAddress, claimedCount, claimedKeys }] }
+ *   502 { error:'rpc_error' }                       ← RPC 장애
+ *   503 { error:'achievements_not_configured' }     ← 환경변수 미설정
+ */
+app.get('/api/achievements/holders', async (_req, res, next) => {
+  if (!achievementsClient.isConfigured()) {
+    return res.status(503).json({
+      error: 'achievements_not_configured',
+      message: 'RPC_URL / ACHIEVEMENT_CONTRACT_ADDRESS 환경변수가 필요합니다',
+    });
+  }
+
+  let users;
+  try {
+    // 후보 상한 500: RPC 호출 수 = 주소 수 × 업적 수 라서 무한정 늘리지 않는다.
+    const { rows } = await db.query(`
+      SELECT DISTINCT user_address FROM (
+        SELECT user_address FROM attempts
+        UNION
+        SELECT user_address FROM advanced_attempts
+      ) t
+      ORDER BY user_address
+      LIMIT 500
+    `);
+    users = rows.map((r) => r.user_address);
+  } catch (err) {
+    return next(err); // DB 장애는 공통 500 핸들러로
+  }
+
+  try {
+    const holders = await achievementsClient.getAchievementHolders(users);
+    return res.json({
+      contract: achievementsClient.address,
+      totalAchievements: ACHIEVEMENTS.length,
+      usersChecked: users.length,
+      holders,
+    });
+  } catch (err) {
+    console.error('[api] /api/achievements/holders RPC 오류:', err.message);
+    return res.status(502).json({ error: 'rpc_error', message: err.message });
+  }
 });
 
 /**

@@ -299,6 +299,26 @@
 
 ## 업적 NFT (EnhancementAchievements)
 
+### `GET /api/achievements/holders`
+
+업적 NFT 보유자 목록. 강화 이력이 있는 지갑(attempts/advanced_attempts의 distinct user)을 대상으로 업적 보유 여부를 **온체인에서 즉석 조회**한다. 보유 업적 수 내림차순(동률은 주소 오름차순), 미보유 지갑은 빠진다.
+
+```json
+{
+  "contract": "0xc65089C74f1A315962BE5e172255b568a29F491c",
+  "totalAchievements": 1,
+  "usersChecked": 3,
+  "holders": [
+    { "userAddress": "0x9a7f...9aff", "claimedCount": 1, "claimedKeys": ["max_enhancement"] }
+  ]
+}
+```
+
+- `usersChecked`: 조회한 후보 지갑 수 (강화 이력 보유 지갑, 최대 500)
+- `claimedKeys`: 보유 업적의 key 목록 — 라벨/설명은 `/api/achievements/:address` 응답과 동일한 레지스트리 기준
+- 아직 아무도 클레임하지 않았으면 `holders: []` (에러 아님)
+- 502 `rpc_error` / 503 `achievements_not_configured`: 아래 업적 조회 API와 동일
+
 ### `GET /api/achievements/:address?itemId=1`
 
 계정의 업적 NFT 발급 여부를 **온체인에서 즉석 조회** (DB 미경유). `?itemId` 를 주면 해당 아이템으로 최대강화 업적을 지금 클레임할 수 있는지(`canClaimMaxEnhancement`)도 같이 응답.
