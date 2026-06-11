@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useWallet } from './hooks/useWallet';
-import { Landing, Dashboard, Game, Records, Verify } from './pages';
+import { Landing, Dashboard, Game, Records, Verify, Ranking } from './pages';
 import './styles/tokens.css';
 import './styles/global.css';
 
@@ -56,6 +56,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard {...sharedProps} />} />
           <Route path="/records" element={<Records {...sharedProps} />} />
           <Route path="/verify" element={<Verify {...sharedProps} />} />
+          <Route path="/ranking" element={<Ranking {...sharedProps} />} />
         </Routes>
       </div>
     </BrowserRouter>
