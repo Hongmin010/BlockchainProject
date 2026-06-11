@@ -198,6 +198,26 @@ export async function fetchAchievements(address, itemId = null) {
   return api.get(`/api/achievements/${address}`, { params });
 }
 
+// ─── /api/ranking ──────────────────────────────────────────────
+
+/**
+ * GET /api/ranking?limit=N
+ * 명예의 전당 랭킹 3종 (기본 10명)
+ *
+ * @param {number} limit
+ *
+ * 반환 예시
+ * {
+ *   limit: 10,
+ *   topItems:       [{ rank, userAddress, itemId, baseLevel, extraLevel, totalLevel }],
+ *   topChallengers: [{ rank, userAddress, attempts }],
+ *   topSuccess:     [{ rank, userAddress, successes }]
+ * }
+ */
+export async function fetchRanking(limit = 10) {
+  return api.get('/api/ranking', { params: { limit } });
+}
+
 // ─── /api/probability ──────────────────────────────────────────
 
 /**
