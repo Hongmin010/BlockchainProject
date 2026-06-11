@@ -60,27 +60,42 @@
 
 ### `GET /api/stats/global`
 
-전체 누적 통계 (Dashboard 상단 카드).
+전체 누적 통계 (Dashboard 상단 카드). **최상위 숫자는 base + 고급강화 합산**이고, `base`/`advanced` 로 내역이 분리되어 있다.
 
 ```json
-{ "completedAttempts": 1667, "successes": 501, "observedRateBp": 3005, "uniqueUsers": 2, "avgVrfLatencySec": 9.87 }
+{
+  "completedAttempts": 1787,
+  "successes": 543,
+  "observedRateBp": 3038,
+  "uniqueUsers": 3,
+  "avgVrfLatencySec": 9.91,
+  "base":     { "completedAttempts": 1677, "successes": 501, "observedRateBp": 2988 },
+  "advanced": { "completedAttempts": 110,  "successes": 42,  "observedRateBp": 3818 }
+}
 ```
+
+- 고급강화 성공 = `resultType` Success(1) 또는 Guaranteed(4) — 레벨이 오른 시도
+- `avgVrfLatencySec` 은 보장강화(VRF 미사용) 표본을 제외한 가중 평균
 
 ### `GET /api/stats/user/:address`
 
-사용자별 시도 통계 + 보유 아이템 (Records 페이지). 잘못된 주소는 400 `invalid_address`.
+사용자별 시도 통계 + 보유 아이템 (Records 페이지). 최상위 숫자는 base + 고급강화 합산 (`base`/`advanced` 내역 포함). 잘못된 주소는 400 `invalid_address`.
 
 ```json
 {
   "address": "0x9a7f...9aff",
-  "completedAttempts": 833,
-  "successes": 250,
-  "observedRateBp": 3001,
+  "completedAttempts": 893,
+  "successes": 272,
+  "observedRateBp": 3046,
+  "base":     { "completedAttempts": 833, "successes": 250, "observedRateBp": 3001 },
+  "advanced": { "completedAttempts": 60,  "successes": 22,  "observedRateBp": 3667 },
   "items": [
-    { "itemId": "1", "level": 5, "totalAttempts": 12, "lastUpdatedAt": "2026-06-01T03:43:56.000Z" }
+    { "itemId": "1", "level": 5, "extraLevel": 2, "totalLevel": 7, "totalAttempts": 12, "lastUpdatedAt": "2026-06-01T03:43:56.000Z" }
   ]
 }
 ```
+
+- `items` 의 `extraLevel`(고급강화 단계) / `totalLevel`(= 5 + extraLevel, base 미만렙이면 level 과 동일 기준) 필드 추가
 
 ---
 
@@ -152,6 +167,25 @@
 - 200: `{ user, itemId, type, registered: true, leaf, proof: ["0x..", ...], root }`
 - 404 `not_registered`: allowlist 에 없는 조합 — 강화 불가 (proof 없음)
 - 400 `invalid_address` / `missing_itemId` / `invalid_itemId` / `invalid_type`
+
+### `GET /api/merkle/items/:address`
+
+특정 주소가 allowlist 에 등록한 **itemId 전체 목록** — 아이템 선택 UI 용.
+이 목록에서 아이템을 고른 뒤, 강화 직전에 `/api/merkle/proof` 로 해당 아이템의 proof 를 발급받는 흐름.
+
+```json
+{
+  "user": "0x9a7f...9aff",
+  "type": 0,
+  "root": "0xe14e...1e8e",
+  "count": 100,
+  "itemIds": ["1", "2", "3", "...", "100"]
+}
+```
+
+- itemId 는 숫자 오름차순 정렬, 문자열 (uint256 규약)
+- 미등록 주소는 404 가 아니라 **200 + `count: 0` + 빈 배열** (프론트 분기 단순화)
+- 400 `invalid_address`
 
 ---
 

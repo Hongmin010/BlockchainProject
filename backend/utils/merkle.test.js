@@ -17,7 +17,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ethers } = require('ethers');
 
-const { getProof, getInfo, getRoot, computeLeaf } = require('./merkle');
+const { getProof, getItemsByUser, getInfo, getRoot, computeLeaf } = require('./merkle');
 const allowlist = require('../merkle/allowlist.json');
 
 const USER_DEMO = '0x9a7f7f7e990474659211526fca723f46d0e89aff'; // item 1~100 등록
@@ -104,4 +104,40 @@ test('getProof: type 미지정 시 allowlist 기본 type 으로 처리', () => {
   const implicit = getProof(USER_DEMO, '3');
   assert.equal(implicit.registered, explicit.registered);
   assert.equal(implicit.leaf, explicit.leaf);
+});
+
+
+// ------------------------------------------------------------
+//  주소별 itemId 목록 (getItemsByUser)
+// ------------------------------------------------------------
+test('getItemsByUser: allowlist 의 해당 주소 entries 와 개수·구성 일치', () => {
+  const expected = [...new Set(
+    allowlist.entries
+      .filter((e) => String(e.user).toLowerCase() === USER_DEMO)
+      .map((e) => String(e.itemId)),
+  )];
+  const ids = getItemsByUser(USER_DEMO);
+  assert.equal(ids.length, expected.length);
+  assert.deepEqual([...ids].sort(), [...expected].sort());
+});
+
+test('getItemsByUser: 숫자 오름차순 정렬', () => {
+  const ids = getItemsByUser(USER_DEMO);
+  for (let i = 1; i < ids.length; i += 1) {
+    assert.ok(BigInt(ids[i - 1]) < BigInt(ids[i]), `${ids[i - 1]} < ${ids[i]} 이어야 함`);
+  }
+});
+
+test('getItemsByUser: 대문자 주소 입력도 동일 결과 (case-insensitive)', () => {
+  assert.deepEqual(getItemsByUser(USER_DEMO.toUpperCase().replace('0X', '0x')), getItemsByUser(USER_DEMO));
+});
+
+test('getItemsByUser: 미등록 주소 → 빈 배열', () => {
+  assert.deepEqual(getItemsByUser(DEAD), []);
+});
+
+test('getItemsByUser: 반환된 모든 itemId 는 getProof 로 proof 발급 가능', () => {
+  for (const itemId of getItemsByUser(USER_DEMO)) {
+    assert.equal(getProof(USER_DEMO, itemId).registered, true, `itemId ${itemId} proof 발급 실패`);
+  }
 });

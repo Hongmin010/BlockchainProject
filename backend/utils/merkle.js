@@ -111,6 +111,19 @@ function getProof(user, itemId, type) {
   return { registered: true, leaf, proof: proofForIndex(tree.levels, tree.indexByLeaf.get(leaf)) };
 }
 
+/**
+ * 특정 주소가 allowlist 에 등록한 itemId 목록 (= 그 지갑으로 강화 가능한 아이템).
+ * 프론트 아이템 선택 UI 용 — proof 는 강화 직전 getProof 로 개별 발급한다.
+ * @returns {string[]} itemId 문자열 배열 (중복 제거, 숫자 오름차순)
+ */
+function getItemsByUser(user) {
+  const u = String(user).toLowerCase();
+  const ids = allowlist.entries
+    .filter((e) => String(e.user).toLowerCase() === u)
+    .map((e) => String(e.itemId));
+  return [...new Set(ids)].sort((a, b) => (BigInt(a) < BigInt(b) ? -1 : 1));
+}
+
 /** 진단/부팅 로그용 메타 */
 function getInfo() {
   const tree = buildTree();
@@ -122,4 +135,4 @@ function getInfo() {
   };
 }
 
-module.exports = { getProof, getInfo, getRoot: () => buildTree().root, computeLeaf };
+module.exports = { getProof, getItemsByUser, getInfo, getRoot: () => buildTree().root, computeLeaf };

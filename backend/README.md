@@ -148,6 +148,7 @@ base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http:
 | `GET /api/attempts/:attemptId` ★ | 시도 1건 상세 + VRF 재검증 | Verify |
 | `GET /api/probability/history?level=<n>` ★ | 확률표 변경 이력 | Dashboard |
 | `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` | allowlist Merkle proof 발급 (강화 요청용) | Game (강화) |
+| `GET /api/merkle/items/:address` | 주소별 등록 itemId 목록 (강화 가능 아이템) | Game (아이템 선택) |
 | `GET /api/advanced/attempts/recent` `[?user=<addr>]` | 고급강화 최근 시도 목록 | Dashboard / Records |
 | `GET /api/advanced/attempts/:attemptId` ★ | 고급강화 1건 상세 + 결과 재검증 (8개 체크) | Verify |
 | `GET /api/advanced/stats` ★ | 고급강화 모드·단계별 통계 검정 (파괴율 포함) | Dashboard |

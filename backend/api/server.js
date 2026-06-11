@@ -39,6 +39,7 @@
  *   GET /api/probability/history         ★ 확률표 변경 이력
  *
  *   GET /api/merkle/proof                allowlist Merkle proof 발급 (프론트 강화 요청 지원)
+ *   GET /api/merkle/items/:address       주소별 등록 itemId 목록 (아이템 선택 UI 지원)
  *
  *   GET /api/advanced/attempts/recent    고급강화 최근 시도 목록
  *   GET /api/advanced/attempts/:id       ★ 고급강화 시도 1건 + 재검증 (T5)
@@ -156,32 +157,81 @@ app.get('/api/stats/by-level', async (_req, res, next) => {
   }
 });
 
-/** GET /api/stats/global — 전체 누적 통계 */
+/**
+ * GET /api/stats/global — 전체 누적 통계 (base + 고급강화 합산)
+ *
+ *  최상위 숫자는 두 컨트랙트 합산값 (대시보드 "총 시도" 카운터용),
+ *  base / advanced 필드로 컨트랙트별 내역도 함께 내려준다.
+ *   - advanced 성공 = resultType Success(1) 또는 Guaranteed(4) (레벨 상승)
+ *   - avgVrfLatencySec 은 보장강화(VRF 미사용) 표본 제외 가중 평균
+ */
 app.get('/api/stats/global', async (_req, res, next) => {
   try {
-    const { rows } = await db.query(`
-      SELECT COUNT(*)::int                                                    AS completed,
-             COUNT(*) FILTER (WHERE success)::int                             AS hits,
-             COUNT(DISTINCT user_address)::int                                AS unique_users,
-             COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - requested_at))),
-                      0)::float                                               AS avg_vrf_latency_sec
-        FROM attempts
-       WHERE status = 'completed'
-    `);
-    const r = rows[0];
+    const [baseQ, advQ, usersQ] = await Promise.all([
+      db.query(`
+        SELECT COUNT(*)::int                                                      AS completed,
+               COUNT(*) FILTER (WHERE success)::int                               AS hits,
+               COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - requested_at))), 0)::float AS avg_latency,
+               COUNT(*) FILTER (WHERE completed_at IS NOT NULL AND requested_at IS NOT NULL)::int AS latency_n
+          FROM attempts
+         WHERE status = 'completed'
+      `),
+      db.query(`
+        SELECT COUNT(*)::int                                                      AS completed,
+               COUNT(*) FILTER (WHERE result_type IN (1, 4))::int                 AS hits,
+               COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - requested_at)))
+                          FILTER (WHERE guaranteed = false), 0)::float            AS avg_latency,
+               COUNT(*) FILTER (WHERE guaranteed = false
+                                  AND completed_at IS NOT NULL AND requested_at IS NOT NULL)::int AS latency_n
+          FROM advanced_attempts
+         WHERE status = 'completed'
+      `),
+      db.query(`
+        SELECT COUNT(DISTINCT user_address)::int AS unique_users
+          FROM (
+            SELECT user_address FROM attempts          WHERE status = 'completed'
+            UNION
+            SELECT user_address FROM advanced_attempts WHERE status = 'completed'
+          ) u
+      `),
+    ]);
+    const b = baseQ.rows[0];
+    const a = advQ.rows[0];
+
+    const completed = b.completed + a.completed;
+    const hits = b.hits + a.hits;
+    const latencyN = b.latency_n + a.latency_n;
+    const avgLatency = latencyN > 0
+      ? (b.avg_latency * b.latency_n + a.avg_latency * a.latency_n) / latencyN
+      : 0;
+
     res.json({
-      completedAttempts: r.completed,
-      successes: r.hits,
-      observedRateBp: r.completed > 0 ? rateToBp(r.hits / r.completed) : 0,
-      uniqueUsers: r.unique_users,
-      avgVrfLatencySec: r.avg_vrf_latency_sec,
+      completedAttempts: completed,
+      successes: hits,
+      observedRateBp: completed > 0 ? rateToBp(hits / completed) : 0,
+      uniqueUsers: usersQ.rows[0].unique_users,
+      avgVrfLatencySec: avgLatency,
+      base: {
+        completedAttempts: b.completed,
+        successes: b.hits,
+        observedRateBp: b.completed > 0 ? rateToBp(b.hits / b.completed) : 0,
+      },
+      advanced: {
+        completedAttempts: a.completed,
+        successes: a.hits,
+        observedRateBp: a.completed > 0 ? rateToBp(a.hits / a.completed) : 0,
+      },
     });
   } catch (err) {
     next(err);
   }
 });
 
-/** GET /api/stats/user/:address — 사용자별 시도 통계 + 보유 아이템 현황 */
+/**
+ * GET /api/stats/user/:address — 사용자별 시도 통계 + 보유 아이템 현황
+ *  최상위 숫자는 base + 고급강화 합산, base / advanced 로 내역 분리 제공.
+ *  items 에는 v4 컬럼(extraLevel / totalLevel)도 포함.
+ */
 app.get('/api/stats/user/:address', async (req, res, next) => {
   const address = normalizeAddress(req.params.address);
   if (!address) {
@@ -191,7 +241,7 @@ app.get('/api/stats/user/:address', async (req, res, next) => {
     });
   }
   try {
-    const [statsResult, itemsResult] = await Promise.all([
+    const [baseResult, advResult, itemsResult] = await Promise.all([
       db.query(`
         SELECT COUNT(*)::int                            AS total,
                COUNT(*) FILTER (WHERE success)::int     AS hits
@@ -199,21 +249,43 @@ app.get('/api/stats/user/:address', async (req, res, next) => {
          WHERE user_address = $1 AND status = 'completed'
       `, [address]),
       db.query(`
-        SELECT item_id, level, total_attempts, last_updated_at
+        SELECT COUNT(*)::int                                       AS total,
+               COUNT(*) FILTER (WHERE result_type IN (1, 4))::int  AS hits
+          FROM advanced_attempts
+         WHERE user_address = $1 AND status = 'completed'
+      `, [address]),
+      db.query(`
+        SELECT item_id, level, extra_level, total_level, total_attempts, last_updated_at
           FROM user_items
          WHERE user_address = $1
          ORDER BY item_id
       `, [address]),
     ]);
-    const s = statsResult.rows[0];
+    const b = baseResult.rows[0];
+    const a = advResult.rows[0];
+    const total = b.total + a.total;
+    const hits = b.hits + a.hits;
+
     res.json({
       address,
-      completedAttempts: s.total,
-      successes: s.hits,
-      observedRateBp: s.total > 0 ? rateToBp(s.hits / s.total) : 0,
+      completedAttempts: total,
+      successes: hits,
+      observedRateBp: total > 0 ? rateToBp(hits / total) : 0,
+      base: {
+        completedAttempts: b.total,
+        successes: b.hits,
+        observedRateBp: b.total > 0 ? rateToBp(b.hits / b.total) : 0,
+      },
+      advanced: {
+        completedAttempts: a.total,
+        successes: a.hits,
+        observedRateBp: a.total > 0 ? rateToBp(a.hits / a.total) : 0,
+      },
       items: itemsResult.rows.map((row) => ({
         itemId: row.item_id,
         level: row.level,
+        extraLevel: row.extra_level,
+        totalLevel: row.total_level,
         totalAttempts: row.total_attempts,
         lastUpdatedAt: row.last_updated_at,
       })),
@@ -428,6 +500,37 @@ app.get('/api/merkle/proof', (req, res, next) => {
       });
     }
     return res.json({ user, itemId: itemId.toString(), type, registered: true, leaf, proof, root });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/merkle/items/:address
+ *
+ *  특정 주소가 allowlist 에 등록한 itemId 전체 목록.
+ *  프론트 아이템 선택 UI 용 — 이 목록에서 아이템을 고른 뒤,
+ *  강화 직전에 /api/merkle/proof 로 해당 아이템의 proof 를 발급받는다.
+ *
+ *  반환
+ *  ----
+ *   200 { user, type, root, count, itemIds: ["1", ...] }   (미등록 주소는 count:0 + 빈 배열)
+ *   400 { error:'invalid_address' }
+ */
+app.get('/api/merkle/items/:address', (req, res, next) => {
+  const user = normalizeAddress(req.params.address);
+  if (!user) {
+    return res.status(400).json({ error: 'invalid_address', message: 'address must match /^0x[a-fA-F0-9]{40}$/' });
+  }
+  try {
+    const itemIds = merkle.getItemsByUser(user);
+    return res.json({
+      user,
+      type: merkle.getInfo().enhancementType,
+      root: merkle.getRoot(),
+      count: itemIds.length,
+      itemIds,
+    });
   } catch (err) {
     return next(err);
   }
