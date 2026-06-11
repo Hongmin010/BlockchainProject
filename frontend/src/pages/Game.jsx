@@ -10,6 +10,8 @@ import {
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
+  fetchMerkleItems,
+  fetchAchievements,
   fetchAdvancedStats,
   fetchAdvancedRecentAttempts,
   formatDateTime,
@@ -96,8 +98,26 @@ export default function Game({ address, onConnect, wallet }) {
     if (isRiskyBlocked) setAdvMode(AdvancedMode.Safe);
   }, [isRiskyBlocked]);
 
+  // ── 업적 상태 ────────────────────────────────────────────────
+  const [achievement, setAchievement] = useState(null);
+
+  useEffect(() => {
+    if (!address) return;
+    fetchAchievements(address)
+      .then((data) => {
+        const ach = data.achievements?.[0];
+        setAchievement({
+          claimed: ach?.claimed ?? false,
+          label: ach?.label ?? 'Lv.10 달성',
+          description: ach?.description ?? '최대 레벨 달성 시 자동 지급',
+        });
+      })
+      .catch(() => {});
+  }, [address]);
+
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
+  const [merkleItemIds, setMerkleItemIds] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(1);
@@ -129,19 +149,26 @@ export default function Game({ address, onConnect, wallet }) {
 
   const advProbTable = advMode === AdvancedMode.Risky ? advRiskyTable : advSafeTable;
 
-  // 지갑 연결 시 아이템 목록 로드
+  // merkle itemId 목록 + stats 레벨 데이터를 병합해서 아이템 배열로 만드는 헬퍼
+  const mergeItems = useCallback((itemIds, statsItems) => {
+    const statsMap = new Map(statsItems.map((it) => [String(it.itemId), it]));
+    return itemIds.map((id) => statsMap.get(String(id)) ?? { itemId: String(id), level: 0, totalLevel: 0 });
+  }, []);
+
+  // 지갑 연결 시 아이템 목록 로드 (merkle 전체 목록 + stats 레벨 병합)
   useEffect(() => {
     if (!address) return;
     setItemsLoading(true);
     setItemsError(false);
-    fetchUserStats(address)
-      .then((data) => {
-        const items = data.items ?? [];
-        setUserItems(items);
-        if (items.length > 0 && !items.find((it) => Number(it.itemId) === selectedItemId)) {
-          setSelectedItemId(Number(items[0].itemId));
+    Promise.all([fetchMerkleItems(address), fetchUserStats(address)])
+      .then(([merkleData, statsData]) => {
+        const ids = merkleData.itemIds ?? [];
+        setMerkleItemIds(ids);
+        const merged = mergeItems(ids, statsData.items ?? []);
+        setUserItems(merged);
+        if (merged.length > 0 && !merged.find((it) => Number(it.itemId) === selectedItemId)) {
+          setSelectedItemId(Number(merged[0].itemId));
         }
-        if (items.length === 0) setSelectedItemId(1);
         setItemsLoading(false);
       })
       .catch(() => {
@@ -220,9 +247,9 @@ export default function Game({ address, onConnect, wallet }) {
       .then((data) => setRecentAttempts(data.attempts ?? []))
       .catch(() => {});
     fetchUserStats(address)
-      .then((data) => setUserItems(data.items ?? []))
+      .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
       .catch(() => {});
-  }, [status, address]);
+  }, [status, address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 상급 강화 완료 시 갱신
   useEffect(() => {
@@ -246,7 +273,13 @@ export default function Game({ address, onConnect, wallet }) {
         .then((data) => { if (data.attempts?.length > 0) setRecentAdvAttempts(data.attempts); })
         .catch(() => {});
       fetchUserStats(address)
-        .then((data) => setUserItems(data.items ?? []))
+        .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
+        .catch(() => {});
+      fetchAchievements(address)
+        .then((data) => {
+          const ach = data.achievements?.[0];
+          if (ach) setAchievement({ claimed: ach.claimed, label: ach.label, description: ach.description });
+        })
         .catch(() => {});
     }, 20_000);
     return () => clearTimeout(timer);
@@ -328,13 +361,7 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
-  // 인덱서 미운영 시 훅 레벨로 아이템 합성 (백엔드에 아이템 없을 때 폴백)
-  const displayItems =
-    userItems.length > 0
-      ? userItems
-      : level > 0
-      ? [{ itemId: String(selectedItemId), level }]
-      : [];
+  const displayItems = userItems;
 
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
@@ -400,10 +427,10 @@ export default function Game({ address, onConnect, wallet }) {
                     onClick={() => setSelectedItemId(iid)}
                   >
                     <span className={styles.catListEmoji}>
-                      {CAT_EMOJIS[Math.min(item.level, CAT_EMOJIS.length - 1)]}
+                      {CAT_EMOJIS[Math.min(item.totalLevel ?? item.level, CAT_EMOJIS.length - 1)]}
                     </span>
                     <span className={`${styles.catListMeta} ${isSelected ? styles.catListMetaSelected : ''}`}>
-                      #{iid} · Lv.{item.level}
+                      #{iid} · Lv.{item.totalLevel ?? item.level}
                     </span>
                   </button>
                 );
@@ -733,6 +760,30 @@ export default function Game({ address, onConnect, wallet }) {
                   : '실패 시 Lv.5로 리셋 위험 — 고위험 고수익'}
               </div>
             )}
+          </div>
+
+          {/* 업적 카드 */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h3 className={styles.cardTitle}>업적</h3>
+              <span className="cf-cap">on-chain NFT</span>
+            </div>
+            <div className={styles.achievementItem}>
+              <div className={styles.achievementIcon}>🏆</div>
+              <div className={styles.achievementBody}>
+                <div className={styles.achievementLabel}>
+                  {achievement?.label ?? 'Lv.10 달성'}
+                </div>
+                <div className={styles.achievementDesc}>
+                  {achievement?.description ?? '최대 레벨 달성 시 자동 지급'}
+                </div>
+              </div>
+              {achievement?.claimed ? (
+                <span className={styles.achievementBadgeClaimed}>획득</span>
+              ) : (
+                <span className={styles.achievementBadgePending}>미획득</span>
+              )}
+            </div>
           </div>
 
           {/* 최근 강화 결과 */}
