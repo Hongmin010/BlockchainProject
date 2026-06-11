@@ -44,6 +44,7 @@
  *   GET /api/advanced/attempts/recent    고급강화 최근 시도 목록
  *   GET /api/advanced/attempts/:id       ★ 고급강화 시도 1건 + 재검증 (T5)
  *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
+ *   GET /api/advanced/rates/history      ★ 고급강화 확률표 변경 이력
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
  *   GET /api/achievements/holders        업적 NFT 보유자 목록 (RPC read-on-demand)
@@ -55,7 +56,7 @@
  *     #2 VRF 재검증 (off-chain re-derivation)
  *        → /api/attempts/:attemptId
  *     #3 확률표 변경 추적
- *        → /api/probability/history
+ *        → /api/probability/history, /api/advanced/rates/history
  * ============================================================
  */
 
@@ -665,6 +666,68 @@ app.get('/api/advanced/stats', async (_req, res, next) => {
       }
     }
     res.json({ safe, risky });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/advanced/rates/history   ★ 고급강화 확률표 변경 이력
+ *
+ *  /api/probability/history 의 고급강화판. 인덱서가 AdvancedRateUpdated
+ *  이벤트로 쌓아둔 advanced_rate_history 를 최신순으로 내려준다.
+ *  프론트 대시보드가 "공개확률(최신) vs 실측확률" 비교 기준으로 사용.
+ *
+ *  쿼리(선택): ?mode=0&extraLevel=1 — 특정 그룹만 필터.
+ *  정렬: block_number DESC, log_index DESC
+ *        (한 tx 로 여러 그룹을 설정하면 같은 블록에 여러 건이 묶이므로
+ *         log_index 2차 정렬로 순서를 결정적으로 만든다)
+ */
+app.get('/api/advanced/rates/history', async (req, res, next) => {
+  let mode = null;
+  if (req.query.mode !== undefined) {
+    const parsed = Number(req.query.mode);
+    if (parsed !== 0 && parsed !== 1) {
+      return res.status(400).json({ error: 'invalid_mode' }); // 0=Safe, 1=Risky
+    }
+    mode = parsed;
+  }
+  let extraLevel = null;
+  if (req.query.extraLevel !== undefined) {
+    const parsed = Number(req.query.extraLevel);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 255) {
+      return res.status(400).json({ error: 'invalid_extra_level' });
+    }
+    extraLevel = parsed;
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT mode, extra_level, updater,
+             old_success_rate, new_success_rate,
+             old_destroy_rate, new_destroy_rate,
+             on_chain_timestamp, tx_hash, log_index, block_number
+        FROM advanced_rate_history
+       WHERE ($1::int IS NULL OR mode = $1)
+         AND ($2::int IS NULL OR extra_level = $2)
+       ORDER BY block_number DESC, log_index DESC
+    `, [mode, extraLevel]);
+    res.json({
+      mode,
+      extraLevel,
+      history: rows.map((row) => ({
+        mode: row.mode,
+        extraLevel: row.extra_level,
+        updater: row.updater,
+        oldSuccessRateBp: row.old_success_rate,
+        newSuccessRateBp: row.new_success_rate,
+        oldDestroyRateBp: row.old_destroy_rate,
+        newDestroyRateBp: row.new_destroy_rate,
+        onChainTimestamp: row.on_chain_timestamp,
+        txHash: row.tx_hash,
+        logIndex: row.log_index,
+        blockNumber: Number(row.block_number),
+      })),
+    });
   } catch (err) {
     next(err);
   }

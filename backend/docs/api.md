@@ -274,6 +274,32 @@
 
 > 데이터가 없는 그룹은 배열에서 빠진다. 고급강화 시도가 0건이면 `{ "safe": [], "risky": [] }`.
 
+### `GET /api/advanced/rates/history?mode=0&extraLevel=1` ★
+
+`/api/probability/history` 의 고급강화판 — `AdvancedRateUpdated` 이벤트로 쌓인 확률표 변경 이력. **대시보드에서 "공개확률(최신) vs 실측확률" 비교 시 공개확률 기준으로 사용** (각 (mode, extraLevel) 그룹의 첫 번째 항목이 현재 적용 확률).
+
+`mode`(0=Safe, 1=Risky, 선택) / `extraLevel`(0~255, 선택) 필터. 최신 → 과거 순 (같은 블록 내 여러 건은 logIndex 내림차순).
+
+```json
+{
+  "mode": null,
+  "extraLevel": null,
+  "history": [
+    {
+      "mode": 1, "extraLevel": 4, "updater": "0x7649...1ec9",
+      "oldSuccessRateBp": 2500, "newSuccessRateBp": 5000,
+      "oldDestroyRateBp": 2500, "newDestroyRateBp": 4000,
+      "onChainTimestamp": "2026-06-10T12:44:14.000Z",
+      "txHash": "0x...", "logIndex": 8, "blockNumber": 42663583
+    }
+  ]
+}
+```
+
+- `oldSuccessRateBp`/`oldDestroyRateBp`: 최초 설정 이벤트면 이전 값이 0 으로 기록될 수 있음 (컨트랙트가 보내준 값 그대로)
+- 변경 이력이 없으면 `history: []` (에러 아님)
+- 400 `invalid_mode` / `invalid_extra_level`
+
 ---
 
 ## 랭킹
