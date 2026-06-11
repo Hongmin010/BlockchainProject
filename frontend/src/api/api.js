@@ -169,6 +169,35 @@ export async function fetchMerkleProof(address, itemId, type = 0) {
   return api.get('/api/merkle/proof', { params: { user: address, itemId, type } });
 }
 
+/**
+ * GET /api/merkle/items/:address
+ * 해당 주소의 allowlist 등록 itemId 전체 목록
+ *
+ * @param {string} address  — 0x... 지갑 주소
+ *
+ * 반환 예시
+ * { user, type, root, count, itemIds: ["1", "2", ..., "100"] }
+ */
+export async function fetchMerkleItems(address) {
+  return api.get(`/api/merkle/items/${address}`);
+}
+
+/**
+ * GET /api/achievements/:address?itemId=N
+ * 업적 목록 + 특정 아이템 클레임 가능 여부
+ *
+ * @param {string} address
+ * @param {number|string|null} itemId
+ *
+ * 반환 예시
+ * { user, contract, achievements: [{ achievementId, key, label, description, claimed }],
+ *   itemId, canClaimMaxEnhancement: bool }
+ */
+export async function fetchAchievements(address, itemId = null) {
+  const params = itemId != null ? { itemId } : {};
+  return api.get(`/api/achievements/${address}`, { params });
+}
+
 // ─── /api/probability ──────────────────────────────────────────
 
 /**

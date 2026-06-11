@@ -10,15 +10,28 @@
 /* ── 고양이 목록 ── */
 .catList {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
+  max-height: 214px;
+  overflow-y: auto;
+  padding-right: 4px;
   padding-bottom: 4px;
   margin-bottom: 20px;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-4) transparent;
 }
 
 .catList::-webkit-scrollbar {
-  display: none;
+  width: 4px;
+}
+
+.catList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.catList::-webkit-scrollbar-thumb {
+  background: var(--bg-4);
+  border-radius: 2px;
 }
 
 .catListItem {

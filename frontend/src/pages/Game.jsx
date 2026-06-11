@@ -10,6 +10,7 @@ import {
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
+  fetchMerkleItems,
   fetchAdvancedStats,
   fetchAdvancedRecentAttempts,
   formatDateTime,
@@ -98,6 +99,7 @@ export default function Game({ address, onConnect, wallet }) {
 
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
+  const [merkleItemIds, setMerkleItemIds] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(1);
@@ -129,19 +131,26 @@ export default function Game({ address, onConnect, wallet }) {
 
   const advProbTable = advMode === AdvancedMode.Risky ? advRiskyTable : advSafeTable;
 
-  // 지갑 연결 시 아이템 목록 로드
+  // merkle itemId 목록 + stats 레벨 데이터를 병합해서 아이템 배열로 만드는 헬퍼
+  const mergeItems = useCallback((itemIds, statsItems) => {
+    const statsMap = new Map(statsItems.map((it) => [String(it.itemId), it]));
+    return itemIds.map((id) => statsMap.get(String(id)) ?? { itemId: String(id), level: 0, totalLevel: 0 });
+  }, []);
+
+  // 지갑 연결 시 아이템 목록 로드 (merkle 전체 목록 + stats 레벨 병합)
   useEffect(() => {
     if (!address) return;
     setItemsLoading(true);
     setItemsError(false);
-    fetchUserStats(address)
-      .then((data) => {
-        const items = data.items ?? [];
-        setUserItems(items);
-        if (items.length > 0 && !items.find((it) => Number(it.itemId) === selectedItemId)) {
-          setSelectedItemId(Number(items[0].itemId));
+    Promise.all([fetchMerkleItems(address), fetchUserStats(address)])
+      .then(([merkleData, statsData]) => {
+        const ids = merkleData.itemIds ?? [];
+        setMerkleItemIds(ids);
+        const merged = mergeItems(ids, statsData.items ?? []);
+        setUserItems(merged);
+        if (merged.length > 0 && !merged.find((it) => Number(it.itemId) === selectedItemId)) {
+          setSelectedItemId(Number(merged[0].itemId));
         }
-        if (items.length === 0) setSelectedItemId(1);
         setItemsLoading(false);
       })
       .catch(() => {
@@ -220,9 +229,9 @@ export default function Game({ address, onConnect, wallet }) {
       .then((data) => setRecentAttempts(data.attempts ?? []))
       .catch(() => {});
     fetchUserStats(address)
-      .then((data) => setUserItems(data.items ?? []))
+      .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
       .catch(() => {});
-  }, [status, address]);
+  }, [status, address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 상급 강화 완료 시 갱신
   useEffect(() => {
@@ -246,7 +255,7 @@ export default function Game({ address, onConnect, wallet }) {
         .then((data) => { if (data.attempts?.length > 0) setRecentAdvAttempts(data.attempts); })
         .catch(() => {});
       fetchUserStats(address)
-        .then((data) => setUserItems(data.items ?? []))
+        .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
         .catch(() => {});
     }, 20_000);
     return () => clearTimeout(timer);
@@ -328,13 +337,7 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
-  // 인덱서 미운영 시 훅 레벨로 아이템 합성 (백엔드에 아이템 없을 때 폴백)
-  const displayItems =
-    userItems.length > 0
-      ? userItems
-      : level > 0
-      ? [{ itemId: String(selectedItemId), level }]
-      : [];
+  const displayItems = userItems;
 
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
@@ -400,10 +403,10 @@ export default function Game({ address, onConnect, wallet }) {
                     onClick={() => setSelectedItemId(iid)}
                   >
                     <span className={styles.catListEmoji}>
-                      {CAT_EMOJIS[Math.min(item.level, CAT_EMOJIS.length - 1)]}
+                      {CAT_EMOJIS[Math.min(item.totalLevel ?? item.level, CAT_EMOJIS.length - 1)]}
                     </span>
                     <span className={`${styles.catListMeta} ${isSelected ? styles.catListMetaSelected : ''}`}>
-                      #{iid} · Lv.{item.level}
+                      #{iid} · Lv.{item.totalLevel ?? item.level}
                     </span>
                   </button>
                 );
