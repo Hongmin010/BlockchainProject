@@ -13,7 +13,9 @@ import {
   fetchMerkleItems,
   fetchAchievements,
   fetchAdvancedStats,
+  fetchAdvancedRatesHistory,
   fetchAdvancedRecentAttempts,
+  latestAdvancedRates,
   formatDateTime,
   shortenTx,
 } from '../api/api';
@@ -201,32 +203,35 @@ export default function Game({ address, onConnect, wallet }) {
       })
       .catch(() => {});
 
-    fetchAdvancedStats()
-      .then(({ safe, risky }) => {
-        if (safe?.length > 0) {
-          setAdvSafeTable(
-            DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-              const match = safe.find((s) => s.extraLevel === i);
-              return match ? { ...row, successProb: match.declaredSuccessRateBp / 100 } : row;
-            })
-          );
-        }
-        if (risky?.length > 0) {
-          setAdvRiskyTable(
-            DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-              const match = risky.find((r) => r.extraLevel === i);
-              return match
-                ? {
-                    ...row,
-                    successProb: match.declaredSuccessRateBp / 100,
-                    destroyProb: match.declaredDestroyRateBp / 100,
-                  }
-                : row;
-            })
-          );
-        }
-      })
-      .catch(() => {});
+    // 확률표: rates/history의 (mode, 단계)별 최신 확률 우선,
+    // 이력이 없는 단계는 stats 행으로 폴백 (stats는 그룹 순서상 최신 보장이 없음)
+    Promise.all([
+      fetchAdvancedRatesHistory().catch(() => null),
+      fetchAdvancedStats().catch(() => null),
+    ]).then(([ratesData, stats]) => {
+      const latest = latestAdvancedRates(ratesData?.history);
+      const buildTable = (mode, statsRows, withDestroy) =>
+        DEFAULT_ADV_PROB_TABLE.map((row, i) => {
+          const hist = latest.get(`${mode}-${i}`);
+          if (hist) {
+            return {
+              ...row,
+              successProb: hist.newSuccessRateBp / 100,
+              destroyProb: withDestroy ? hist.newDestroyRateBp / 100 : row.destroyProb,
+            };
+          }
+          const match = (statsRows ?? []).find((s) => s.extraLevel === i);
+          return match
+            ? {
+                ...row,
+                successProb: match.declaredSuccessRateBp / 100,
+                destroyProb: withDestroy ? match.declaredDestroyRateBp / 100 : row.destroyProb,
+              }
+            : row;
+        });
+      setAdvSafeTable(buildTable(AdvancedMode.Safe, stats?.safe, false));
+      setAdvRiskyTable(buildTable(AdvancedMode.Risky, stats?.risky, true));
+    });
 
     Promise.all([
       fetchRecentAttempts(8),

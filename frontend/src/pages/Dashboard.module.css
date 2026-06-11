@@ -258,6 +258,43 @@
   color: var(--ink-3);
 }
 
+/* ── 확률 변경 이력 ── */
+.historySection {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--bg-3);
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.historyItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.historyMeta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.historyChange {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.historyPrev {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 /* ── 도넛 차트 ── */
 .donutWrap {
   flex: 1;
