@@ -1,15 +1,44 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header, Card, Badge, Button, CharacterStage } from '../components';
+import { fetchGlobalStats, fetchRanking, bpToPercent } from '../api/api';
+import catHero from '../assets/cat-hero.png';
 import styles from './Landing.module.css';
 
-// 임시로 하드코딩
-const STATS = [
-  { value: '48,217', label: '전체 강화 시도' },
-  { value: '52.3%', label: '실제 성공률', color: 'var(--success)' },
-  { value: 'Lv.5', label: '최고 단계' },
-];
-
 export default function Landing({ address, onConnect }) {
+  const [globalStats, setGlobalStats] = useState(null);
+  const [maxLevel, setMaxLevel] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // 일부 API가 실패해도 나머지는 표시되도록 allSettled 사용
+    Promise.allSettled([fetchGlobalStats(), fetchRanking(1)]).then(([global, ranking]) => {
+      if (cancelled) return;
+      if (global.status === 'fulfilled') setGlobalStats(global.value);
+      if (ranking.status === 'fulfilled') {
+        setMaxLevel(ranking.value.topItems?.[0]?.totalLevel ?? null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stats = [
+    {
+      value: globalStats ? globalStats.completedAttempts.toLocaleString() : '—',
+      label: '전체 강화 시도',
+    },
+    {
+      value: globalStats ? `${bpToPercent(globalStats.observedRateBp)}%` : '—',
+      label: '실제 성공률',
+      color: 'var(--success)',
+    },
+    { value: maxLevel != null ? `Lv.${maxLevel}` : '—', label: '최고 단계' },
+  ];
+
   return (
     <div className="cf-page">
       <Header address={address} onConnect={onConnect} />
@@ -49,7 +78,7 @@ export default function Landing({ address, onConnect }) {
 
           {/* 신뢰 지표 */}
           <div className={styles.trustStrip}>
-            {STATS.map(({ value, label, color }) => (
+            {stats.map(({ value, label, color }) => (
               <div key={label}>
                 <div className={styles.trustValue} style={{ color }}>
                   {value}
@@ -64,30 +93,9 @@ export default function Landing({ address, onConnect }) {
 
         {/* 고양이 섹션 */}
         <div className={styles.heroVisual}>
-          <CharacterStage level={5} size={420} />
-
-          {/* 플로팅 카드 — 최근 결과 */}
-          <Card className={styles.floatResult}>
-            <Badge variant="success" dot>
-              성공
-            </Badge>
-            <div style={{ marginLeft: 10 }}>
-              <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>Lv.4 → Lv.5</div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>
-                0x9f2a…b14e
-              </div>
-            </div>
-          </Card>
-
-          {/* 플로팅 카드 — 다음 확률 */}
-          <Card className={styles.floatOdds}>
-            <div className="cf-cap" style={{ fontSize: 9 }}>
-              다음 단계 확률
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ember-300)', marginTop: 2 }}>
-              10.0%
-            </div>
-          </Card>
+          <CharacterStage size={420} showBadge={false}>
+            <img src={catHero} alt="CatForge 고양이" className={styles.heroCat} />
+          </CharacterStage>
         </div>
       </section>
 
