@@ -38,8 +38,9 @@ export function useForge({ signer, provider, address }) {
   const [lastResult, setLastResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // 이벤트 리스너 정리용 ref
+  // 이벤트 리스너 / 폴링 정리용 ref
   const listenerRef = useRef(null);
+  const pollRef = useRef(null);
 
   // ── 아이템 상태 조회 ─────────────────────────────────────────
   const refreshState = useCallback(
@@ -131,7 +132,7 @@ export function useForge({ signer, provider, address }) {
 
   // ── 강화 실행 ────────────────────────────────────────────────
   const forge = useCallback(
-    async (itemId = 1, enhancementType = 0) => {
+    async (itemId = 1, enhancementType = 0, proof = []) => {
       if (!signer || !address) {
         setError('지갑이 연결되어 있지 않습니다.');
         return;
@@ -151,7 +152,11 @@ export function useForge({ signer, provider, address }) {
 
       try {
         const contract = getContract(signer);
-        const tx = await contract.requestEnhancement(itemId, enhancementType);
+        // proof가 있으면 Merkle gate 통과 버전으로 호출 (첫 강화)
+        const tx =
+          proof.length > 0
+            ? await contract.requestEnhancementWithProof(itemId, enhancementType, proof)
+            : await contract.requestEnhancement(itemId, enhancementType);
 
         // 트랜잭션 전송 완료 → VRF 대기 상태로 전환
         setIsPending(true);
@@ -159,6 +164,36 @@ export function useForge({ signer, provider, address }) {
 
         // 이벤트 리스너 등록
         _startListening(itemId);
+
+        // 폴링 폴백 — HTTP 프로바이더에서 이벤트가 누락될 경우 대비
+        const beforeLevelSnap = level;
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(async () => {
+          if (!provider || !address) return;
+          try {
+            const c = getContract(provider);
+            const pendingId = await c.getPendingAttemptId(address, itemId);
+            if (Number(pendingId) !== 0) return; // 아직 VRF 대기 중
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            const lvl = await c.getItemLevel(address, itemId);
+            const newLevel = Number(lvl);
+            setLastResult((prev) => {
+              if (prev) return prev; // 이벤트 리스너가 이미 처리한 경우 유지
+              return {
+                success: newLevel > beforeLevelSnap,
+                beforeLevel: beforeLevelSnap,
+                afterLevel: newLevel,
+                txHash: '',
+                randomValue: '',
+                successRateBps: 0,
+              };
+            });
+            setLevel(newLevel);
+            setIsPending(false);
+            setStatus((s) => (s === 'done' ? s : 'done'));
+          } catch {}
+        }, 3000);
 
         // 트랜잭션 컨펌 대기 (선택적 — UI에서 txHash 표시용)
         const receipt = await tx.wait(1);
@@ -181,12 +216,16 @@ export function useForge({ signer, provider, address }) {
     [signer, address, isPending, level, _startListening]
   );
 
-  // ── 언마운트 시 이벤트 리스너 정리 ──────────────────────────
+  // ── 언마운트 시 이벤트 리스너 + 폴링 정리 ───────────────────
   useEffect(() => {
     return () => {
       if (listenerRef.current && provider) {
         const contract = getContract(provider);
         contract.off('EnhancementResult', listenerRef.current);
+      }
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
     };
   }, [provider]);

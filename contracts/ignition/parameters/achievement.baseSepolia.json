@@ -1,0 +1,7 @@
+{
+  "EnhancementAchievementsModule": {
+    "advancedGameAddress": "0x4f1c8573446efc5ae48eb453cfc66fafe26c2f5c",
+    "metadataUri": "https://example.com/metadata/achievements/{id}.json",
+    "maxLevel": 10
+  }
+}
