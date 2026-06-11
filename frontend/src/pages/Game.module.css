@@ -728,6 +728,21 @@
   cursor: not-allowed;
 }
 
+/* ── 쫄보 강화 버튼 (primary 오버라이드, 보라) ── */
+.btnSafe.btnSafe {
+  background: linear-gradient(180deg, #8b6cc9, #6f4fb0);
+  border-color: #5d3f99;
+  box-shadow:
+    0 6px 18px rgba(124, 92, 191, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+.btnSafe.btnSafe:not(:disabled):hover {
+  box-shadow:
+    0 8px 24px rgba(124, 92, 191, 0.5),
+    0 1px 0 rgba(255, 255, 255, 0.25) inset;
+}
+
 .guaranteedDot {
   font-size: 11px;
 }

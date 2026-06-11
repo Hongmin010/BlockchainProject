@@ -140,7 +140,7 @@ export default function Game({ address, onConnect, wallet }) {
   // ── 최근 강화 결과 ────────────────────────────────────────────
   const [recentAttempts, setRecentAttempts] = useState([]);
   const [recentAdvAttempts, setRecentAdvAttempts] = useState([]);
-  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentLoading, setRecentLoading] = useState(true);
 
   // ── 확률표 ───────────────────────────────────────────────────
   const [probTable, setProbTable] = useState(DEFAULT_PROB_TABLE);
@@ -286,30 +286,28 @@ export default function Game({ address, onConnect, wallet }) {
   }, [advStatus, address, advLastResult]);
 
   // ── 강화 버튼 핸들러 ─────────────────────────────────────────
-  const handleForge = useCallback(async () => {
+  const handleForge = useCallback(async (mode = AdvancedMode.Safe) => {
+    if (isAdvancedMode) setAdvMode(mode); // 확률표 탭도 누른 모드로 동기화
     setProofError(null);
     let proof = [];
-    const needsProof = true;
 
-    if (needsProof) {
-      setIsFetchingProof(true);
-      try {
-        const result = await fetchMerkleProof(address, selectedItemId, ENHANCEMENT_TYPE);
-        proof = result.proof;
-      } catch (err) {
-        setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
-        setIsFetchingProof(false);
-        return;
-      }
+    setIsFetchingProof(true);
+    try {
+      const result = await fetchMerkleProof(address, selectedItemId, ENHANCEMENT_TYPE);
+      proof = result.proof;
+    } catch (err) {
+      setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
       setIsFetchingProof(false);
+      return;
     }
+    setIsFetchingProof(false);
 
     if (isAdvancedMode) {
-      advForge(selectedItemId, advMode, proof);
+      advForge(selectedItemId, mode, proof);
     } else {
       forge(selectedItemId, ENHANCEMENT_TYPE, proof);
     }
-  }, [level, isAdvancedMode, advMode, address, selectedItemId, forge, advForge]);
+  }, [isAdvancedMode, address, selectedItemId, forge, advForge]);
 
   // ── 파티클 애니메이션 ─────────────────────────────────────────
   const spawnParticles = useCallback((resultTypeOrBool) => {
@@ -415,6 +413,9 @@ export default function Game({ address, onConnect, wallet }) {
         {/* ── 고양이 강화 섹션 ── */}
         <div className={styles.leftCard}>
           {/* 고양이 아이템 목록 */}
+          {itemsLoading && (
+            <div className={styles.catListEmpty}>고양이 목록 불러오는 중…</div>
+          )}
           {!itemsLoading && displayItems.length > 0 && (
             <div className={styles.catList}>
               {displayItems.map((item) => {
@@ -602,58 +603,64 @@ export default function Game({ address, onConnect, wallet }) {
             </div>
           )}
 
-          {/* 상급 모드 토글 (버튼 바로 위) */}
-          {isAdvancedMode && (
-            <div className={styles.advModeTabs} style={{ marginBottom: 10 }}>
-              <button
-                className={`${styles.advModeTab} ${advMode === AdvancedMode.Safe ? styles.advModeTabActiveSafe : ''}`}
-                onClick={() => setAdvMode(AdvancedMode.Safe)}
-              >
-                쫄보 강화{isGuaranteed ? ' 🌟' : ''}
-              </button>
-              <button
-                className={`${styles.advModeTab} ${advMode === AdvancedMode.Risky ? styles.advModeTabActiveRisky : ''} ${isRiskyBlocked ? styles.advModeTabBlocked : ''}`}
-                onClick={() => !isRiskyBlocked && setAdvMode(AdvancedMode.Risky)}
-                disabled={isRiskyBlocked}
-              >
-                상남자 강화{isRiskyBlocked ? ' 🔒' : ''}
-              </button>
-            </div>
-          )}
-
           {/* 액션 버튼 */}
           <div className={styles.actions}>
-            <Button
-              variant="primary"
-              size="xl"
-              onClick={handleForge}
-              disabled={
-                isForging ||
-                isFetchingProof ||
-                (isAdvancedMode
-                  ? advPending || totalLevel >= 10 || (advMode === AdvancedMode.Risky && isRiskyBlocked)
-                  : isPending || level >= 5)
-              }
-              loading={isForging || isFetchingProof}
-              style={{ flex: '1 1 auto' }}
-            >
-              {totalLevel >= 10
-                ? '🎉 최고 레벨!'
-                : (isAdvancedMode ? advPending : isPending)
-                ? '⏳ 결과 대기 중…'
-                : isFetchingProof
-                ? '🔑 등록 확인 중…'
-                : isAdvancedMode
-                ? advMode === AdvancedMode.Risky
-                  ? '⚒ 상남자 강화 시도하기'
-                  : isGuaranteed
-                  ? '🌟 보장 강화 시도하기'
-                  : '⚒ 쫄보 강화 시도하기'
-                : '⚒ 강화 시도하기'}
-            </Button>
-            <Button variant="secondary" size="xl" onClick={() => refreshState(selectedItemId)}>
-              새로고침
-            </Button>
+            {!isAdvancedMode ? (
+              <Button
+                variant="primary"
+                size="xl"
+                onClick={() => handleForge()}
+                disabled={isForging || isFetchingProof || isPending || level >= 5}
+                loading={isForging || isFetchingProof}
+                style={{ flex: '1 1 auto' }}
+              >
+                {isPending || isForging
+                  ? '⏳ 결과 대기 중…'
+                  : isFetchingProof
+                  ? '🔑 등록 확인 중…'
+                  : '⚒ 강화 시도하기'}
+              </Button>
+            ) : totalLevel >= 10 ? (
+              <Button variant="primary" size="xl" disabled style={{ flex: '1 1 auto' }}>
+                🎉 최고 레벨!
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  size="xl"
+                  className={styles.btnSafe}
+                  onClick={() => handleForge(AdvancedMode.Safe)}
+                  disabled={isForging || isFetchingProof || advPending}
+                  loading={(isForging || isFetchingProof) && advMode === AdvancedMode.Safe}
+                  style={{ flex: '1 1 auto' }}
+                >
+                  {(isForging || advPending) && advMode === AdvancedMode.Safe
+                    ? '⏳ 결과 대기 중…'
+                    : isFetchingProof && advMode === AdvancedMode.Safe
+                    ? '🔑 등록 확인 중…'
+                    : isGuaranteed
+                    ? '🌟 보장 강화'
+                    : '🛡 쫄보 강화'}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="xl"
+                  onClick={() => handleForge(AdvancedMode.Risky)}
+                  disabled={isForging || isFetchingProof || advPending || isRiskyBlocked}
+                  loading={(isForging || isFetchingProof) && advMode === AdvancedMode.Risky}
+                  style={{ flex: '1 1 auto' }}
+                >
+                  {(isForging || advPending) && advMode === AdvancedMode.Risky
+                    ? '⏳ 결과 대기 중…'
+                    : isFetchingProof && advMode === AdvancedMode.Risky
+                    ? '🔑 등록 확인 중…'
+                    : isRiskyBlocked
+                    ? '🔒 상남자 강화'
+                    : '⚔ 상남자 강화'}
+                </Button>
+              </>
+            )}
           </div>
           <div className={styles.gasNote}>
             <span>⛽</span>
