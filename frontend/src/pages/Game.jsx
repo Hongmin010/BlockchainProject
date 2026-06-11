@@ -11,6 +11,7 @@ import {
   fetchMerkleProof,
   fetchUserStats,
   fetchMerkleItems,
+  fetchAchievements,
   fetchAdvancedStats,
   fetchAdvancedRecentAttempts,
   formatDateTime,
@@ -96,6 +97,23 @@ export default function Game({ address, onConnect, wallet }) {
   useEffect(() => {
     if (isRiskyBlocked) setAdvMode(AdvancedMode.Safe);
   }, [isRiskyBlocked]);
+
+  // ── 업적 상태 ────────────────────────────────────────────────
+  const [achievement, setAchievement] = useState(null);
+
+  useEffect(() => {
+    if (!address) return;
+    fetchAchievements(address)
+      .then((data) => {
+        const ach = data.achievements?.[0];
+        setAchievement({
+          claimed: ach?.claimed ?? false,
+          label: ach?.label ?? 'Lv.10 달성',
+          description: ach?.description ?? '최대 레벨 달성 시 자동 지급',
+        });
+      })
+      .catch(() => {});
+  }, [address]);
 
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
@@ -256,6 +274,12 @@ export default function Game({ address, onConnect, wallet }) {
         .catch(() => {});
       fetchUserStats(address)
         .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
+        .catch(() => {});
+      fetchAchievements(address)
+        .then((data) => {
+          const ach = data.achievements?.[0];
+          if (ach) setAchievement({ claimed: ach.claimed, label: ach.label, description: ach.description });
+        })
         .catch(() => {});
     }, 20_000);
     return () => clearTimeout(timer);
@@ -736,6 +760,30 @@ export default function Game({ address, onConnect, wallet }) {
                   : '실패 시 Lv.5로 리셋 위험 — 고위험 고수익'}
               </div>
             )}
+          </div>
+
+          {/* 업적 카드 */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h3 className={styles.cardTitle}>업적</h3>
+              <span className="cf-cap">on-chain NFT</span>
+            </div>
+            <div className={styles.achievementItem}>
+              <div className={styles.achievementIcon}>🏆</div>
+              <div className={styles.achievementBody}>
+                <div className={styles.achievementLabel}>
+                  {achievement?.label ?? 'Lv.10 달성'}
+                </div>
+                <div className={styles.achievementDesc}>
+                  {achievement?.description ?? '최대 레벨 달성 시 자동 지급'}
+                </div>
+              </div>
+              {achievement?.claimed ? (
+                <span className={styles.achievementBadgeClaimed}>획득</span>
+              ) : (
+                <span className={styles.achievementBadgePending}>미획득</span>
+              )}
+            </div>
           </div>
 
           {/* 최근 강화 결과 */}

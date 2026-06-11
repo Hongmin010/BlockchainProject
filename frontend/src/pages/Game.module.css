@@ -628,6 +628,60 @@
   color: var(--ember-500);
 }
 
+/* ── 업적 ── */
+.achievementItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.achievementIcon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.achievementBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievementLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.achievementDesc {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.achievementBadgeClaimed {
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--success);
+  background: rgba(95, 195, 122, 0.1);
+  border: 1px solid rgba(95, 195, 122, 0.2);
+  border-radius: 6px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
+.achievementBadgePending {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--ink-3);
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: 6px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
 /* ── 상급 강화 탭 ── */
 .advModeTabs {
   display: flex;
