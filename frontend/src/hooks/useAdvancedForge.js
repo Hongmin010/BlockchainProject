@@ -26,6 +26,8 @@ function getContract(signerOrProvider) {
 export function useAdvancedForge({ signer, provider, address }) {
   const [extraLevel, setExtraLevel] = useState(0);
   const [safeDropStreak, setSafeDropStreak] = useState(0);
+  const [isGuaranteed, setIsGuaranteed] = useState(false);
+  const [isRiskyBlocked, setIsRiskyBlocked] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [status, setStatus] = useState('idle');
   const [lastResult, setLastResult] = useState(null);
@@ -36,26 +38,24 @@ export function useAdvancedForge({ signer, provider, address }) {
   // 총 레벨 = 5 + extraLevel
   const totalLevel = 5 + extraLevel;
 
-  // 다음 Safe 강화가 보장인지
-  const isGuaranteed = safeDropStreak >= 2;
-
-  // Risky 강화가 차단된 상태인지 (보장 Safe 강화를 먼저 써야 할 때)
-  const isRiskyBlocked = safeDropStreak >= 2;
-
   // ── 상태 조회 ─────────────────────────────────────────────
   const refreshState = useCallback(
     async (itemId = 1) => {
       if (!provider || !address) return;
       try {
         const contract = getContract(provider);
-        const [extra, streak, pendingId] = await Promise.all([
+        const [extra, streak, pendingId, guaranteed, riskyBlocked] = await Promise.all([
           contract.getAdvancedExtraLevel(address, itemId),
           contract.getSafeDropStreak(address, itemId),
           contract.getPendingAttemptId(address, itemId),
+          contract.isNextSafeEnhancementGuaranteed(address, itemId),
+          contract.isRiskyEnhancementBlocked(address, itemId),
         ]);
         setExtraLevel(Number(extra));
         setSafeDropStreak(Number(streak));
         setIsPending(Number(pendingId) !== 0);
+        setIsGuaranteed(guaranteed);
+        setIsRiskyBlocked(riskyBlocked);
       } catch (err) {
         console.error('[useAdvancedForge] refreshState 오류:', err);
       }
@@ -71,11 +71,15 @@ export function useAdvancedForge({ signer, provider, address }) {
       contract.getAdvancedExtraLevel(address, 1),
       contract.getSafeDropStreak(address, 1),
       contract.getPendingAttemptId(address, 1),
+      contract.isNextSafeEnhancementGuaranteed(address, 1),
+      contract.isRiskyEnhancementBlocked(address, 1),
     ])
-      .then(([extra, streak, pendingId]) => {
+      .then(([extra, streak, pendingId, guaranteed, riskyBlocked]) => {
         setExtraLevel(Number(extra));
         setSafeDropStreak(Number(streak));
         setIsPending(Number(pendingId) !== 0);
+        setIsGuaranteed(guaranteed);
+        setIsRiskyBlocked(riskyBlocked);
       })
       .catch(console.error);
   }, [address, provider]);
@@ -130,8 +134,11 @@ export function useAdvancedForge({ signer, provider, address }) {
           success: rt === AdvancedResultType.Success || rt === AdvancedResultType.Guaranteed,
         });
 
+        const newStreak = Number(afterSafeDropStreak);
         setExtraLevel(Number(afterExtraLevel));
-        setSafeDropStreak(Number(afterSafeDropStreak));
+        setSafeDropStreak(newStreak);
+        setIsGuaranteed(newStreak >= 2);
+        setIsRiskyBlocked(newStreak >= 2);
         setIsPending(false);
         setStatus('done');
 

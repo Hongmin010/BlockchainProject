@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Header, Badge, TxHash, Button, WalletModal } from '../components';
-import { fetchUserStats, fetchRecentAttempts, bpToPercent, formatDateTime } from '../api/api';
+import { fetchUserStats, fetchRecentAttempts, fetchAdvancedRecentAttempts, bpToPercent, formatDateTime } from '../api/api';
 import styles from './Records.module.css';
+
+const ADV_RESULT_LABEL = { 0: '실패(유지)', 1: '성공', 2: '단계하락', 3: '파괴', 4: '보장성공' };
 
 const PAGE_SIZE = 7;
 
@@ -18,11 +20,19 @@ export default function Records({ address, onConnect }) {
   useEffect(() => {
     if (!address) return;
 
-    Promise.all([fetchUserStats(address), fetchRecentAttempts(100, address)])
-      .then(([stats, recent]) => {
+    Promise.all([
+      fetchUserStats(address),
+      fetchRecentAttempts(100, address),
+      fetchAdvancedRecentAttempts(100, address),
+    ])
+      .then(([stats, recent, advRecent]) => {
         setPage(1);
         setUserStats(stats);
-        setAttempts(recent.attempts ?? []);
+        const all = [
+          ...(recent.attempts ?? []).map((a) => ({ ...a, isAdvanced: false })),
+          ...(advRecent.attempts ?? []).map((a) => ({ ...a, isAdvanced: true })),
+        ].sort((a, b) => new Date(b.requestedAt ?? 0) - new Date(a.requestedAt ?? 0));
+        setAttempts(all);
         setLoading(false);
         setError(null);
       })
@@ -176,27 +186,42 @@ export default function Records({ address, onConnect }) {
                 </tr>
               )}
               {!loading &&
-                paged.map((a) => (
-                  <tr key={a.attemptId}>
-                    <td>
-                      <TxHash hash={a.requestedTxHash} shorten={false} />
-                    </td>
-                    <td className={styles.monoCell}>
-                      Lv.{a.beforeLevel} → Lv.{a.afterLevel ?? a.beforeLevel}
-                    </td>
-                    <td>
-                      <Badge variant={a.success ? 'success' : 'fail'} dot>
-                        {a.success ? '성공' : '실패'}
-                      </Badge>
-                    </td>
-                    <td className={styles.timeCell}>{formatDateTime(a.requestedAt)}</td>
-                    <td className={styles.actionCell}>
-                      <Link to={`/verify?id=${a.attemptId}`} className={styles.verifyLink}>
-                        검증 →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                paged.map((a, idx) => {
+                  const isAdv = a.isAdvanced;
+                  const advSuccess = isAdv && (a.resultType === 1 || a.resultType === 4);
+                  return (
+                    <tr key={isAdv ? `adv-${a.attemptId ?? idx}` : a.attemptId}>
+                      <td>
+                        <TxHash hash={a.requestedTxHash} shorten={false} />
+                      </td>
+                      <td className={styles.monoCell}>
+                        {isAdv ? (
+                          <>
+                            <span style={{ fontSize: 11, color: '#9b7de0', marginRight: 4 }}>상급</span>
+                            Lv.{a.beforeTotalLevel} → Lv.{a.afterTotalLevel ?? a.beforeTotalLevel}
+                          </>
+                        ) : (
+                          `Lv.${a.beforeLevel} → Lv.${a.afterLevel ?? a.beforeLevel}`
+                        )}
+                      </td>
+                      <td>
+                        <Badge variant={isAdv ? (advSuccess ? 'success' : 'fail') : (a.success ? 'success' : 'fail')} dot>
+                          {isAdv
+                            ? (ADV_RESULT_LABEL[a.resultType] ?? '—')
+                            : (a.success ? '성공' : '실패')}
+                        </Badge>
+                      </td>
+                      <td className={styles.timeCell}>{formatDateTime(a.requestedAt)}</td>
+                      <td className={styles.actionCell}>
+                        {!isAdv && (
+                          <Link to={`/verify?id=${a.attemptId}`} className={styles.verifyLink}>
+                            검증 →
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
 

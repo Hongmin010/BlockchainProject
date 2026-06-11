@@ -214,6 +214,16 @@ export async function fetchAdvancedStats() {
   return api.get('/api/advanced/stats');
 }
 
+/**
+ * GET /api/advanced/attempts/recent?limit=N
+ * 최근 상급 강화 목록
+ */
+export async function fetchAdvancedRecentAttempts(limit = 20, user = null) {
+  const params = { limit };
+  if (user) params.user = user;
+  return api.get('/api/advanced/attempts/recent', { params });
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────────
 
 /**
