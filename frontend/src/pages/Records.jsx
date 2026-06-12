@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Header, Badge, TxHash, Button, WalletModal } from '../components';
+import { Header, Badge, TxHash, WalletModal } from '../components';
 import { fetchUserStats, fetchRecentAttempts, fetchAdvancedRecentAttempts, bpToPercent, formatDateTime } from '../api/api';
 import styles from './Records.module.css';
 
@@ -20,6 +20,7 @@ export default function Records({ address, onConnect }) {
   useEffect(() => {
     if (!address) return;
 
+    setLoading(true);
     Promise.all([
       fetchUserStats(address),
       fetchRecentAttempts(100, address),
@@ -98,14 +99,6 @@ export default function Records({ address, onConnect }) {
             <span className="cf-cap">
               <span style={{ color: 'var(--success)' }}>●</span> connected · {short}
             </span>
-          </div>
-          <div className={styles.titleActions}>
-            <Button variant="ghost" size="sm">
-              CSV 내보내기
-            </Button>
-            <Button variant="ghost" size="sm">
-              필터 ▾
-            </Button>
           </div>
         </div>
 
