@@ -17,6 +17,7 @@ type AllowEntry = {
 
 const MY_ADDRESS = "0x76491a444fea8b6c7dc1e12a973631b99f0f1ec9";
 const TEAMMATE_ADDRESS = "0x9A7F7f7e990474659211526fCa723F46d0E89AFF";
+const NEW_TEAMMATE_ADDRESS = "0x5735fC88D65061b16F580A2732d22b3306D336B8";
 
 function createAllowList(): AllowEntry[] {
   const list: AllowEntry[] = [];
@@ -32,6 +33,14 @@ function createAllowList(): AllowEntry[] {
   for (let itemId = 1; itemId <= 100; itemId++) {
     list.push({
       user: TEAMMATE_ADDRESS,
+      itemId: BigInt(itemId),
+      enhancementType: 0,
+    });
+  }
+  
+  for (let itemId = 1; itemId <= 100; itemId++) {
+    list.push({
+      user: NEW_TEAMMATE_ADDRESS,
       itemId: BigInt(itemId),
       enhancementType: 0,
     });
