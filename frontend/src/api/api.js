@@ -273,6 +273,38 @@ export async function fetchAdvancedRecentAttempts(limit = 20, user = null) {
   return api.get('/api/advanced/attempts/recent', { params });
 }
 
+/**
+ * GET /api/advanced/rates/history?mode=<0|1>&extraLevel=<n>
+ * 상급 강화 확률표 변경 이력 — 최신순(블록 내림차순).
+ * 같은 (mode, extraLevel) 그룹의 첫 항목이 현재 적용 확률.
+ *
+ * 반환 예시
+ * {
+ *   history: [{ mode:1, extraLevel:4, oldSuccessRateBp:2500, newSuccessRateBp:5000,
+ *               oldDestroyRateBp:2500, newDestroyRateBp:4000,
+ *               onChainTimestamp:'...', txHash:'0x...', logIndex:8, blockNumber:42663583 }]
+ * }
+ */
+export async function fetchAdvancedRatesHistory(mode = null, extraLevel = null) {
+  const params = {};
+  if (mode != null) params.mode = mode;
+  if (extraLevel != null) params.extraLevel = extraLevel;
+  return api.get('/api/advanced/rates/history', { params });
+}
+
+/**
+ * rates/history 배열(최신순) → (mode, extraLevel)별 현재 적용 확률 Map
+ * key: `${mode}-${extraLevel}`, value: 해당 그룹의 최신 이력 항목
+ */
+export function latestAdvancedRates(history) {
+  const map = new Map();
+  for (const h of history ?? []) {
+    const key = `${h.mode}-${h.extraLevel}`;
+    if (!map.has(key)) map.set(key, h);
+  }
+  return map;
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────────
 
 /**
