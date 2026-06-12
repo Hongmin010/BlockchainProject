@@ -43,7 +43,7 @@ backend/
 ├── indexer/            # 온체인 이벤트 인덱서 (체인 → DB 동기화)
 │   └── indexer.js      #   2개 컨트랙트 · 6개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
 ├── api/                # REST API 서버 (DB → 클라이언트)
-│   └── server.js       #   17개 라우트 (/health + /api/*)
+│   └── server.js       #   19개 라우트 (/health + /api/*)
 ├── db/                 # PostgreSQL 스키마 + 연결 풀
 │   ├── schema.sql      #   6개 테이블 (v4 — 고급강화 반영)
 │   └── pool.js         #   lazy 싱글턴 풀 + withTransaction 헬퍼 (SSL 자동 분기)
@@ -130,7 +130,18 @@ backend/
 > ★ **`user_items` 는 별도 이벤트 없이 백엔드가 자동 갱신한다.**
 > 기본 강화의 `EnhancementCompleted` 와 고급강화의 `AdvancedEnhancementResult` 핸들러가
 > 각자 attempts 갱신과 같은 DB 트랜잭션 안에서 `user_items` UPSERT 를 함께 수행한다.
-> 업적 NFT(`EnhancementAchievements`)는 인덱싱하지 않는다 — `/api/achievements/:address` 가 RPC 로 즉석 조회.
+> 구 업적 NFT(`EnhancementAchievements`)는 인덱싱하지 않는다 — `/api/achievements/legacy/:address` 가 RPC 로 즉석 조회.
+
+## 업적 시스템 v5 (컨트랙트 선행 개발 — mock 기반)
+
+신규 업적 NFT 컨트랙트(팀원 병렬 개발 중)와 **인터페이스만 합의**하고 백엔드 전 구간을 먼저 완성했다. 실제 ABI 도착 시 `abi/achievements.fragment.json` 교체 + `.env` 에 `ACHIEVEMENTS_NFT_ADDRESS` 추가 + `MOCK_MINT=false` 만 하면 연결된다.
+
+**판정 위치 경계** — ID 1(검증자)·2(상남자)는 **컨트랙트가 판정**·`AchievementUnlocked` emit → 인덱서는 기록만(재판정 금지). ID 3(공식인증 호구)·4(천운)·5(다둥이 집사)는 **백엔드가 판정**(`lib/achievementJudge.js`, Wilson 95% CI 재사용) → 근거 payload 의 keccak256 해시를 `mintAchievement(to, id, dataHash)` 로 온체인 커밋 → 제3자가 `/proof` API 로 재검증 가능.
+
+- 해시 스펙(컨트랙트와 바이트 일치 필수): [docs/hash-test-vector.md](docs/hash-test-vector.md) — 컨트랙트팀 Remix 검증용 테스트 벡터
+- 판정 훅: 인덱서 `EnhancementResult` 처리 직후 해당 유저만 검사 (전체 스캔 없음, 표본 30회 미만 운 판정 스킵)
+- mint: `MOCK_MINT=true` 면 가짜 tx_hash 로 전 흐름 검증 (현재 기본 운용 모드). 상태 전이 `detected → minting → minted/failed(재시도 가능)`
+- 중복 발급 차단: `achievements` 테이블 `UNIQUE(wallet, achievement_id)`
 
 ## API 엔드포인트 요약
 
@@ -155,8 +166,10 @@ base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http:
 | `GET /api/advanced/stats` ★ | 고급강화 모드·단계별 통계 검정 (파괴율 포함) | Dashboard |
 | `GET /api/advanced/rates/history` `[?mode=<0\|1>&extraLevel=<n>]` ★ | 고급강화 확률표 변경 이력 | Dashboard |
 | `GET /api/ranking?limit=<n>` | 랭킹 3종 (최고 아이템 / 도전왕 / 성공왕) | Ranking |
-| `GET /api/achievements/holders` | 업적 NFT 보유자 목록 (온체인 즉석 조회) | Ranking |
-| `GET /api/achievements/:address` `[?itemId=<n>]` | 업적 NFT 발급 여부 + 클레임 가능 여부 (온체인 즉석 조회) | Records / Game |
+| `GET /api/achievements/holders` | 업적 NFT 보유자 목록 (구 컨트랙트, 온체인 즉석 조회) | Ranking |
+| `GET /api/achievements/:wallet` ★ | 온/오프체인 통합 업적 목록 (v5 신규 시스템, ID 1~5) | Records / 업적 |
+| `GET /api/achievements/:wallet/:achievementId/proof` ★ | 오프체인 업적 판정 근거 공개 (payload + dataHash, 제3자 재검증) | Verify / 업적 |
+| `GET /api/achievements/legacy/:address` `[?itemId=<n>]` | (deprecated) 구 컨트랙트 발급 여부 + 클레임 가능 여부 | Records / Game |
 
 > **프론트엔드 안내:** 프론트는 Supabase 에 직접 접근하지 않는다. 위 REST API 만 호출한다(백엔드가 게이트키퍼). 단, **"강화 시도"(Game 페이지)는 백엔드가 아니라 지갑으로 컨트랙트에 직접 트랜잭션을 보내는 동작**이다 — 백엔드는 읽기 전용 검증 + 강화에 필요한 Merkle proof 발급(`/api/merkle/proof`)을 담당한다. (컨트랙트 `merkleRoot` 게이트 때문에 **등록된 `(user, itemId, type)` 만** 강화 가능 — 미등록 지갑/아이템은 proof 가 안 나온다.)
 

@@ -351,7 +351,9 @@
 
 ---
 
-## 업적 NFT (EnhancementAchievements)
+## 업적 NFT
+
+v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(합의 ID 1~5, `achievements` 테이블 기반, 아래 `/:wallet` + `/proof`)과 **구 컨트랙트**(EnhancementAchievements — `holders`, `legacy/:address`, 은퇴 예정).
 
 ### `GET /api/achievements/holders`
 
@@ -369,35 +371,84 @@
 ```
 
 - `usersChecked`: 조회한 후보 지갑 수 (강화 이력 보유 지갑, 최대 500)
-- `claimedKeys`: 보유 업적의 key 목록 — 라벨/설명은 `/api/achievements/:address` 응답과 동일한 레지스트리 기준
+- `claimedKeys`: 보유 업적의 key 목록 — 라벨/설명은 `/api/achievements/legacy/:address` 응답과 동일한 레지스트리 기준 (구 컨트랙트)
 - 아직 아무도 클레임하지 않았으면 `holders: []` (에러 아님)
 - 502 `rpc_error` / 503 `achievements_not_configured`: 아래 업적 조회 API와 동일
 
-### `GET /api/achievements/:address?itemId=1`
+### `GET /api/achievements/:wallet` ★ (v5 신규 업적 시스템)
 
-계정의 업적 NFT 발급 여부를 **온체인에서 즉석 조회** (DB 미경유). `?itemId` 를 주면 해당 아이템으로 최대강화 업적을 지금 클레임할 수 있는지(`canClaimMaxEnhancement`)도 같이 응답.
+**온/오프체인 통합 업적 목록.** 합의된 업적 5종 전체에 보유 여부를 붙여 반환한다.
+
+| ID | 업적 | 판정 | 조건 |
+|---|---|---|---|
+| 1 | 검증자 | 온체인 | 누적 강화 100회 |
+| 2 | 상남자 | 온체인 | Safe 모드 0회로 15강 도달 |
+| 3 | 공식인증 호구 | 오프체인 | 관측 성공률이 Wilson 95% CI 기준 기대치보다 유의하게 낮음 |
+| 4 | 천운 | 오프체인 | 관측 성공률이 유의하게 높음 |
+| 5 | 다둥이 집사 | 오프체인 | 동시에 10강 이상 고양이 5마리 보유 |
+
+```json
+{
+  "wallet": "0x9a7f...9aff",
+  "achievements": [
+    {
+      "achievementId": 4, "name": "천운", "source": "offchain",
+      "condition": "관측 성공률이 기대 성공률 대비 Wilson 95% CI 밖으로 유의하게 높음",
+      "unlocked": true, "status": "minted",
+      "itemId": null, "txHash": "0x7e3b...e558",
+      "dataHash": "0x67df...7826", "mintedAt": "2026-06-12T...",
+      "proofUrl": "/api/achievements/0x9a7f...9aff/4/proof"
+    }
+  ]
+}
+```
+
+- `unlocked` = NFT 발급 완료(`status: "minted"`). `detected`/`minting`/`failed` 는 감지됐지만 아직 발급 전.
+- 온체인 업적(1, 2)은 컨트랙트가 판정·발급한 것을 인덱싱한 결과, 오프체인 업적(3~5)은 백엔드가 판정 후 mint 한 결과.
+- 400 `invalid_address`
+
+### `GET /api/achievements/:wallet/:achievementId/proof` ★ (제3자 재검증)
+
+오프체인 판정 업적(3~5)의 **판정 근거 원본(payload) + 온체인 커밋 해시(dataHash)** 공개. 누구나 payload 를 `keccak256(abi.encode(wallet, achievementId, evidenceA, evidenceB, fromBlock, toBlock))` 로 해시해 온체인 dataHash 와 대조할 수 있다 (스펙: `docs/hash-test-vector.md`).
+
+```json
+{
+  "wallet": "0x9a7f...9aff", "achievementId": 4, "name": "천운", "status": "minted",
+  "payload": {
+    "wallet": "0x9a7f...9aff", "achievementId": "4",
+    "evidenceA": "31", "evidenceB": "40",
+    "fromBlock": "26000000", "toBlock": "26123456"
+  },
+  "dataHash": "0x67df...7826",
+  "mintTxHash": "0x7e3b...e558",
+  "verification": {
+    "formula": "dataHash == keccak256(abi.encode(wallet, achievementId, evidenceA, evidenceB, fromBlock, toBlock))",
+    "types": ["address", "uint256", "uint256", "uint256", "uint256", "uint256"],
+    "evidenceMeaning": "evidenceA = 성공수, evidenceB = 시도수"
+  }
+}
+```
+
+- evidence 의미: ID 3/4 → A=성공수, B=시도수 / ID 5 → A=10강 이상 마리수, B=0
+- 400 `invalid_address` / `invalid_achievement_id` (1~5 외)
+- 404 `achievement_not_found`: 해당 지갑이 이 업적 미보유
+- 404 `no_offchain_proof`: 온체인 업적(1, 2)은 payload 없음 — 근거는 응답의 `txHash` (AchievementUnlocked 이벤트)
+
+### `GET /api/achievements/legacy/:address?itemId=1` (구 시스템 — deprecated)
+
+v4 까지의 구 컨트랙트(EnhancementAchievements, `max_enhancement` 레지스트리) RPC 즉석 조회. **신규 ID 체계(1~5)와 충돌해 `legacy` 경로로 이동**했다 — 구 컨트랙트 은퇴 시 제거 예정. 응답 형태는 기존과 동일:
 
 ```json
 {
   "user": "0x9a7f...9aff",
   "contract": "0xc65089C74f1A315962BE5e172255b568a29F491c",
   "achievements": [
-    {
-      "achievementId": 1,
-      "key": "max_enhancement",
-      "label": "최대 강화 달성",
-      "description": "totalLevel 이 maxLevel(=10, base 5 + 고급강화 extra 5)에 도달",
-      "claimed": false
-    }
+    { "achievementId": 1, "key": "max_enhancement", "label": "최대 강화 달성", "description": "...", "claimed": false }
   ],
   "itemId": "1",
   "canClaimMaxEnhancement": false
 }
 ```
 
-- 400 `invalid_address` / `invalid_itemId`
-- 502 `rpc_error`: RPC 노드 장애 (재시도 권장)
-- 503 `achievements_not_configured`: 서버 환경변수 미설정 (운영 이슈)
-
-> 업적 **클레임(발급) 자체는 지갑 tx** (`claimMaxEnhancement(itemId)`) — 백엔드는 조회만 담당.
-> 업적이 추가 배포되면 `achievements` 배열에 항목이 늘어난다 (응답 형태는 동일).
+- 400 `invalid_address` / `invalid_itemId` · 502 `rpc_error` · 503 `achievements_not_configured`
+- 업적 **클레임(발급) 자체는 지갑 tx** (`claimMaxEnhancement(itemId)`) — 백엔드는 조회만 담당.
