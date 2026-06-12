@@ -139,6 +139,34 @@
 
 `verification` 은 `status='completed'` 일 때만 객체, 아니면 `null`. `matchesContract: false` 면 컨트랙트가 난수와 다른 결과를 기록했다는 뜻(조작 탐지).
 
+### `GET /api/attempts/by-tx/:txHash` ★
+
+**트랜잭션 해시**로 시도 1건 조회 + 재검증. 사용자는 attemptId 를 알 수 없으므로, 검증 페이지에서 익스플로러의 tx 해시를 복붙해 검증하는 용도.
+
+- `requestedTxHash` / `completedTxHash` 어느 쪽과 일치해도 찾는다.
+- 기본 강화(`attempts`) → 고급강화(`advanced_attempts`) 순으로 탐색하고, 어느 쪽에서 찾았는지 `type` 으로 알려준다.
+- 응답 형태는 `type` 필드를 제외하면 각각 `GET /api/attempts/:attemptId`, `GET /api/advanced/attempts/:attemptId` 와 동일.
+
+```json
+{
+  "type": "base",
+  "attempt": { "...": "attempts/recent 의 1건과 동일 형태" },
+  "verification": { "successDerived": true, "matchesContract": true, "formula": "..." }
+}
+```
+
+```json
+{
+  "type": "advanced",
+  "attempt": { "...": "advanced/attempts/recent 의 1건과 동일 형태" },
+  "verification": { "ok": true, "expected": {}, "actual": {}, "checks": {}, "mismatches": [] }
+}
+```
+
+- 해시 대소문자는 무시(소문자로 정규화 후 매칭).
+- 400 `invalid_tx_hash`: `/^0x[a-fA-F0-9]{64}$/` 형식이 아닐 때.
+- 404 `attempt_not_found`: 양쪽 테이블 모두에 없는 해시 (다른 컨트랙트의 tx 거나 인덱서가 아직 수집 전).
+
 ---
 
 ## 확률표 변경 이력 (차별화 #3)
