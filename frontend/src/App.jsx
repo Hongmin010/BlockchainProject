@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useWallet } from './hooks/useWallet';
 import { Landing, Dashboard, Game, Records, Verify, Ranking } from './pages';
+import { RateChangeNotice } from './components';
 import './styles/tokens.css';
 import './styles/global.css';
 
@@ -15,6 +16,8 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      {/* 확률 변경 글로벌 팝업 */}
+      <RateChangeNotice />
       {/* 경고 배너 */}
       {wallet.address && !wallet.isCorrectChain && (
         <div

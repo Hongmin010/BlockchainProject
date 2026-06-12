@@ -206,8 +206,11 @@ export default function Records({ address, onConnect }) {
                       </td>
                       <td className={styles.timeCell}>{formatDateTime(a.requestedAt)}</td>
                       <td className={styles.actionCell}>
-                        {!isAdv && (
-                          <Link to={`/verify?id=${a.attemptId}`} className={styles.verifyLink}>
+                        {(a.requestedTxHash || a.completedTxHash) && (
+                          <Link
+                            to={`/verify?tx=${a.requestedTxHash ?? a.completedTxHash}`}
+                            className={styles.verifyLink}
+                          >
                             검증 →
                           </Link>
                         )}
