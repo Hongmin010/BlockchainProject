@@ -150,6 +150,21 @@ export async function fetchAttempt(attemptId) {
   return api.get(`/api/attempts/${attemptId}`);
 }
 
+/**
+ * GET /api/attempts/by-tx/:txHash
+ * 트랜잭션 해시로 시도 1건 조회 + 재검증 (기본/상급 통합)
+ *
+ * @param {string} txHash — 0x + 64자리 16진수 (requested/completed 어느 쪽이든 매칭)
+ *
+ * 반환 예시
+ * { type: 'base'|'advanced', attempt: {...}, verification: {...} }
+ *  — type 외에는 /api/attempts/:attemptId, /api/advanced/attempts/:attemptId 응답과 동일
+ *  — 404 'attempt_not_found': 양쪽 테이블에 없음 (인덱서 수집 전이거나 다른 컨트랙트 tx)
+ */
+export async function fetchAttemptByTx(txHash) {
+  return api.get(`/api/attempts/by-tx/${txHash}`);
+}
+
 // ─── /api/merkle ───────────────────────────────────────────
 
 /**
