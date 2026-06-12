@@ -1,0 +1,116 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(20, 16, 12, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-elevate);
+  padding: 32px;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  position: relative;
+}
+
+.icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 168, 95, 0.2), rgba(255, 122, 26, 0.05));
+  border: 1px solid rgba(255, 122, 26, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 20px rgba(255, 122, 26, 0.2);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 8px;
+}
+
+.desc {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+/* ── 변경 내역 리스트 ── */
+.changeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 24px;
+}
+
+.changeItem {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md, 10px);
+  padding: 12px 14px;
+}
+
+.changeTarget {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.changeTime {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-left: 8px;
+}
+
+.changeRow {
+  font-size: 14px;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rateLabel {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.oldRate {
+  text-decoration: line-through;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.newRate {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rateUp {
+  color: var(--success, #4ade80);
+}
+
+.rateDown {
+  color: var(--ember-500, #ff7a1a);
+}
+
+.confirmBtn {
+  width: 100%;
+  justify-content: center;
+}
