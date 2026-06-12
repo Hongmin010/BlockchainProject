@@ -43,7 +43,7 @@ backend/
 ├── indexer/            # 온체인 이벤트 인덱서 (체인 → DB 동기화)
 │   └── indexer.js      #   2개 컨트랙트 · 6개 이벤트 핸들러 + 폴링 루프 (ABI 기반)
 ├── api/                # REST API 서버 (DB → 클라이언트)
-│   └── server.js       #   16개 라우트 (/health + /api/*)
+│   └── server.js       #   17개 라우트 (/health + /api/*)
 ├── db/                 # PostgreSQL 스키마 + 연결 풀
 │   ├── schema.sql      #   6개 테이블 (v4 — 고급강화 반영)
 │   └── pool.js         #   lazy 싱글턴 풀 + withTransaction 헬퍼 (SSL 자동 분기)
@@ -93,7 +93,7 @@ backend/
 
 고급강화는 결과가 5종(유지/성공/하락/파괴/보장)이라 재검증도 확장됐다 — roll 비교뿐 아니라 **레벨·스트릭 전이, 보장강화 발동 조건, 모드별 확률 유효성까지 8개 체크**로 대조한다 (`utils/advancedVerify.js`).
 
-→ 엔드포인트: `GET /api/attempts/:attemptId`, `GET /api/advanced/attempts/:attemptId`
+→ 엔드포인트: `GET /api/attempts/:attemptId`, `GET /api/advanced/attempts/:attemptId`, `GET /api/attempts/by-tx/:txHash` (tx 해시로 양쪽 통합 조회)
 
 ### 3. 확률표 변경 추적 (`ProbabilityTableUpdated` 이벤트)
 
@@ -146,6 +146,7 @@ base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http:
 | `GET /api/stats/user/:address` | 사용자 시도 통계 + 보유 아이템 | Records |
 | `GET /api/attempts/recent` `[?user=<addr>]` | 최근 시도 목록 (user 지정 시 해당 유저만 — "내 기록"용) | Dashboard / Records |
 | `GET /api/attempts/:attemptId` ★ | 시도 1건 상세 + VRF 재검증 | Verify |
+| `GET /api/attempts/by-tx/:txHash` ★ | 트랜잭션 해시로 시도 조회 + 재검증 (기본/고급 통합, `type` 필드로 구분) | Verify |
 | `GET /api/probability/history?level=<n>` ★ | 확률표 변경 이력 | Dashboard |
 | `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` | allowlist Merkle proof 발급 (강화 요청용) | Game (강화) |
 | `GET /api/merkle/items/:address` | 주소별 등록 itemId 목록 (강화 가능 아이템) | Game (아이템 선택) |

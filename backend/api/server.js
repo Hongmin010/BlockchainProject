@@ -35,6 +35,7 @@
  *
  *   GET /api/attempts/recent             최근 시도 목록 (대시보드용)
  *   GET /api/attempts/:attemptId         ★ 시도 1건 상세 + VRF 재검증 결과
+ *   GET /api/attempts/by-tx/:txHash      ★ 트랜잭션 해시로 시도 조회 + 재검증 (기본/고급 통합)
  *
  *   GET /api/probability/history         ★ 확률표 변경 이력
  *
@@ -54,7 +55,7 @@
  *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
  *        → /api/stats/by-level, /api/stats/global, /api/stats/user/:address
  *     #2 VRF 재검증 (off-chain re-derivation)
- *        → /api/attempts/:attemptId
+ *        → /api/attempts/:attemptId, /api/attempts/by-tx/:txHash
  *     #3 확률표 변경 추적
  *        → /api/probability/history, /api/advanced/rates/history
  * ============================================================
@@ -393,6 +394,75 @@ app.get('/api/attempts/:attemptId', async (req, res, next) => {
     }
 
     res.json({ attempt, verification });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/attempts/by-tx/:txHash   ★ 트랜잭션 해시로 시도 조회 + 재검증
+ *
+ *  검증 페이지에서 사용자는 attemptId 를 알 수 없으므로, 익스플로러에서
+ *  복사한 트랜잭션 해시로 검증할 수 있게 한다. requested/completed 양쪽
+ *  해시를 기본 강화(attempts) → 고급강화(advanced_attempts) 순으로 찾는다.
+ *
+ *  반환: { type: 'base'|'advanced', attempt, verification }
+ *    — /api/attempts/:attemptId, /api/advanced/attempts/:attemptId 와
+ *      각각 동일한 형태에, 어느 테이블에서 찾았는지 type 만 추가.
+ */
+app.get('/api/attempts/by-tx/:txHash', async (req, res, next) => {
+  // 익스플로러 복붙 해시는 대소문자가 섞일 수 있다 — DB 에는 소문자로 저장됨.
+  const txHash = req.params.txHash.toLowerCase();
+  if (!/^0x[a-f0-9]{64}$/.test(txHash)) {
+    return res.status(400).json({
+      error: 'invalid_tx_hash',
+      message: 'txHash must match /^0x[a-fA-F0-9]{64}$/',
+    });
+  }
+  try {
+    const base = await db.query(`
+      SELECT attempt_id, user_address, item_id, before_level, after_level,
+             claimed_success_rate, success, vrf_request_id, random_value,
+             status, requested_at, completed_at,
+             requested_tx_hash, completed_tx_hash
+        FROM attempts
+       WHERE requested_tx_hash = $1 OR completed_tx_hash = $1
+       ORDER BY attempt_id DESC
+       LIMIT 1
+    `, [txHash]);
+
+    if (base.rows.length > 0) {
+      const row = base.rows[0];
+      let verification = null;
+      if (row.status === 'completed' && row.random_value != null) {
+        const successDerived = verifySuccess(row.random_value, row.claimed_success_rate);
+        verification = {
+          successDerived,
+          matchesContract: successDerived === row.success,
+          formula: '(randomValue % 10000) < claimedSuccessRate',
+        };
+      }
+      return res.json({ type: 'base', attempt: formatAttempt(row), verification });
+    }
+
+    const adv = await db.query(`
+      SELECT ${ADV_ATTEMPT_COLUMNS}
+        FROM advanced_attempts
+       WHERE requested_tx_hash = $1 OR completed_tx_hash = $1
+       ORDER BY attempt_id DESC
+       LIMIT 1
+    `, [txHash]);
+
+    if (adv.rows.length > 0) {
+      const row = adv.rows[0];
+      let verification = null;
+      if (row.status === 'completed' && row.result_type != null) {
+        verification = verifyAdvancedAttempt(advFromDbRow(row));
+      }
+      return res.json({ type: 'advanced', attempt: formatAdvancedAttempt(row), verification });
+    }
+
+    return res.status(404).json({ error: 'attempt_not_found', txHash });
   } catch (err) {
     next(err);
   }
