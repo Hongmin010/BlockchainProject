@@ -43,6 +43,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         _mintMaxEnhancement(user, itemId);
     }
 
+    function setURI(string memory newUri) external onlyOwner {
+        _setURI(newUri);
+    }
+
     function hasAchievement(
         address user,
         uint256 achievementId
