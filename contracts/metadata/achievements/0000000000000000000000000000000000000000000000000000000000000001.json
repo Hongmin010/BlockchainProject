@@ -1,0 +1,32 @@
+{
+  "name": "CatForge: Master Enhancer",
+  "description": "Awarded to a player who successfully enhanced a CatForge item to +15, proving exceptional dedication, skill, and perseverance.",
+  "image": "ipfs://IMAGE_CID/master-enhancer.png",
+  "external_url": "https://catforge.example.com",
+  "attributes": [
+    {
+      "trait_type": "Achievement",
+      "value": "Master Enhancer"
+    },
+    {
+      "trait_type": "Enhancement Level",
+      "value": 15
+    },
+    {
+      "trait_type": "Requirement",
+      "value": "Reach +15 Enhancement"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Legendary"
+    },
+    {
+      "trait_type": "Transferability",
+      "value": "Soulbound"
+    },
+    {
+      "trait_type": "Category",
+      "value": "Progression Achievement"
+    }
+  ]
+}
