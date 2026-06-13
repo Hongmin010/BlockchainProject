@@ -11,7 +11,7 @@ if (!process.env.PRIVATE_KEY) {
 }
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const CONTRACTS_DIR = resolve(SCRIPT_DIR, "..");
+const CONTRACTS_DIR = resolve(SCRIPT_DIR, "../..");
 
 const DEFAULT_CONTRACT_ADDRESS = "0xd8cbed31bae06ff61dc01abff4b7f57921ddc15d";
 const BASE_PROOF_ENHANCEMENT_TYPE = 0;
