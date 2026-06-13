@@ -13,7 +13,7 @@ if (!process.env.PRIVATE_KEY) {
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const CONTRACTS_DIR = resolve(SCRIPT_DIR, "..");
 
-const DEFAULT_CONTRACT_ADDRESS = "0x4f1c8573446efc5ae48eb453cfc66fafe26c2f5c";
+const DEFAULT_CONTRACT_ADDRESS = "0xd8cbed31bae06ff61dc01abff4b7f57921ddc15d";
 const BASE_PROOF_ENHANCEMENT_TYPE = 0;
 const RESULT_TYPES = [
   "FailKeep",
@@ -35,7 +35,7 @@ const contractAddress =
   process.env.CONTRACT_ADDRESS ??
   DEFAULT_CONTRACT_ADDRESS;
 const itemId = BigInt(process.env.ITEM_ID ?? "71");
-const preferredMode = Number(process.env.MODE ?? "1"); // 0 = Safe, 1 = Risky
+const preferredMode = Number(process.env.MODE ?? "0"); // 0 = Safe, 1 = Risky
 const targetTotalLevel = BigInt(process.env.TARGET_TOTAL_LEVEL ?? "10");
 const maxTxs = process.env.MAX_TXS ? Number(process.env.MAX_TXS) : Infinity;
 const pollMs = Number(process.env.POLL_SECONDS ?? "10") * 1000;
