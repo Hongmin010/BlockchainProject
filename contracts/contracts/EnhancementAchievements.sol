@@ -6,10 +6,33 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 
 interface IAdvancedEnhancementGame {
     function getTotalLevel(address user, uint256 itemId) external view returns (uint8);
+    function getAchievementStats(
+        address user,
+        uint256 itemId
+    )
+        external
+        view
+        returns (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        );
 }
 
 contract EnhancementAchievements is ERC1155, Ownable {
     uint256 public constant MAX_ENHANCEMENT_ACHIEVEMENT_ID = 1;
+    uint256 public constant SUCCESS_STREAK_ACHIEVEMENT_ID = 2;
+    uint8 public constant SUCCESS_STREAK_THRESHOLD = 3;
 
     IAdvancedEnhancementGame public immutable advancedGame;
     uint8 public immutable maxLevel;
@@ -39,6 +62,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         _mintMaxEnhancement(msg.sender, itemId);
     }
 
+    function claimSuccessStreak(uint256 itemId) external {
+        _mintSuccessStreak(msg.sender, itemId);
+    }
+
     function awardMaxEnhancement(address user, uint256 itemId) external onlyOwner {
         _mintMaxEnhancement(user, itemId);
     }
@@ -63,6 +90,15 @@ contract EnhancementAchievements is ERC1155, Ownable {
             advancedGame.getTotalLevel(user, itemId) >= maxLevel;
     }
 
+    function canClaimSuccessStreak(
+        address user,
+        uint256 itemId
+    ) external view returns (bool) {
+        return
+            !claimed[user][SUCCESS_STREAK_ACHIEVEMENT_ID] &&
+            _getMaxSuccessStreak(user, itemId) >= SUCCESS_STREAK_THRESHOLD;
+    }
+
     function _mintMaxEnhancement(address user, uint256 itemId) internal {
         require(user != address(0), "Invalid user");
         require(
@@ -82,6 +118,68 @@ contract EnhancementAchievements is ERC1155, Ownable {
             itemId,
             totalLevel
         );
+    }
+
+    function _mintSuccessStreak(address user, uint256 itemId) internal {
+        require(user != address(0), "Invalid user");
+        require(
+            !claimed[user][SUCCESS_STREAK_ACHIEVEMENT_ID],
+            "Achievement already claimed"
+        );
+
+        uint8 maxSuccessStreak = _getMaxSuccessStreak(user, itemId);
+        require(
+            maxSuccessStreak >= SUCCESS_STREAK_THRESHOLD,
+            "Success streak not met"
+        );
+
+        uint8 totalLevel = advancedGame.getTotalLevel(user, itemId);
+
+        claimed[user][SUCCESS_STREAK_ACHIEVEMENT_ID] = true;
+        _mint(user, SUCCESS_STREAK_ACHIEVEMENT_ID, 1, "");
+
+        emit AchievementClaimed(
+            user,
+            SUCCESS_STREAK_ACHIEVEMENT_ID,
+            itemId,
+            totalLevel
+        );
+    }
+
+    function _getMaxSuccessStreak(
+        address user,
+        uint256 itemId
+    ) internal view returns (uint8) {
+        (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        ) = advancedGame.getAchievementStats(user, itemId);
+
+        totalAttempts;
+        totalSuccesses;
+        totalFailures;
+        totalDestructions;
+        totalSafeDowngrades;
+        highestTotalLevel;
+        currentSuccessStreak;
+        currentFailureStreak;
+        maxFailureStreak;
+        lastDestroyedLevelLoss;
+        maxDestroyedLevelLoss;
+        totalDestroyedLevelLoss;
+
+        return maxSuccessStreak;
     }
 
     function _beforeTokenTransfer(

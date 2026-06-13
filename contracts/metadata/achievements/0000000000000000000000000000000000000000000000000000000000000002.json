@@ -1,0 +1,32 @@
+{
+  "name": "CatForge: Lucky Streak",
+  "description": "Awarded to a player who achieved three consecutive enhancement successes without a single failure.",
+  "image": "ipfs://IMAGE_CID/lucky-streak.png",
+  "external_url": "https://catforge.example.com",
+  "attributes": [
+    {
+      "trait_type": "Achievement",
+      "value": "Lucky Streak"
+    },
+    {
+      "trait_type": "Achievement Type",
+      "value": "Enhancement Streak"
+    },
+    {
+      "trait_type": "Consecutive Successes",
+      "value": 3
+    },
+    {
+      "trait_type": "Requirement",
+      "value": "Achieve 3 consecutive enhancement successes"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Epic"
+    },
+    {
+      "trait_type": "Transferability",
+      "value": "Soulbound"
+    }
+  ]
+}
