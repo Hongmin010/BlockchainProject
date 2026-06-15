@@ -1,28 +1,32 @@
 {
-  "name": "CatForge: Lucky Streak",
-  "description": "Awarded to a player who achieved three consecutive enhancement successes without a single failure.",
-  "image": "ipfs://IMAGE_CID/lucky-streak.png",
+  "name": "CatForge: Fearless Forger",
+  "description": "Awarded to a player who reached +15 or higher in Risky Mode, proving their courage under extreme risk.",
+  "image": "ipfs://IMAGE_CID/fearless-forger.png",
   "external_url": "https://catforge.example.com",
   "attributes": [
     {
       "trait_type": "Achievement",
-      "value": "Lucky Streak"
+      "value": "Fearless Forger"
     },
     {
       "trait_type": "Achievement Type",
-      "value": "Enhancement Streak"
+      "value": "Risk Challenge"
     },
     {
-      "trait_type": "Consecutive Successes",
-      "value": 3
+      "trait_type": "Mode",
+      "value": "Risky Mode"
+    },
+    {
+      "trait_type": "Required Level",
+      "value": "+15 or higher"
     },
     {
       "trait_type": "Requirement",
-      "value": "Achieve 3 consecutive enhancement successes"
+      "value": "Reach +15 or higher in Risky Mode"
     },
     {
       "trait_type": "Rarity",
-      "value": "Epic"
+      "value": "Legendary"
     },
     {
       "trait_type": "Transferability",

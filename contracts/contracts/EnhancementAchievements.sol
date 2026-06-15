@@ -30,14 +30,16 @@ interface IAdvancedEnhancementGame {
 }
 
 contract EnhancementAchievements is ERC1155, Ownable {
-    uint256 public constant MAX_ENHANCEMENT_ACHIEVEMENT_ID = 1;
-    uint256 public constant SUCCESS_STREAK_ACHIEVEMENT_ID = 2;
+    uint256 public constant MAX_ENHANCEMENT_ACHIEVEMENT_ID = 6;
+    uint256 public constant SUCCESS_STREAK_ACHIEVEMENT_ID = 7;
     uint8 public constant SUCCESS_STREAK_THRESHOLD = 3;
 
     IAdvancedEnhancementGame public immutable advancedGame;
     uint8 public immutable maxLevel;
 
     mapping(address => mapping(uint256 => bool)) public claimed;
+    mapping(address => bool) public minters;
+    mapping(address => mapping(uint256 => bytes32)) public achievementDataHash;
 
     event AchievementClaimed(
         address indexed user,
@@ -45,6 +47,20 @@ contract EnhancementAchievements is ERC1155, Ownable {
         uint256 indexed itemId,
         uint8 totalLevel
     );
+
+    event AchievementMinted(
+        address indexed user,
+        uint256 indexed tokenId,
+        bytes32 indexed dataHash,
+        address minter
+    );
+
+    event MinterUpdated(address indexed minter, bool enabled);
+
+    modifier onlyMinter() {
+        require(minters[msg.sender] || msg.sender == owner(), "Not minter");
+        _;
+    }
 
     constructor(
         address advancedGameAddress,
@@ -72,6 +88,31 @@ contract EnhancementAchievements is ERC1155, Ownable {
 
     function setURI(string memory newUri) external onlyOwner {
         _setURI(newUri);
+    }
+
+    function setMinter(address minter, bool enabled) external onlyOwner {
+        require(minter != address(0), "Invalid minter");
+
+        minters[minter] = enabled;
+
+        emit MinterUpdated(minter, enabled);
+    }
+
+    function mintAchievement(
+        address user,
+        uint256 tokenId,
+        bytes32 dataHash
+    ) external onlyMinter {
+        require(user != address(0), "Invalid user");
+        require(tokenId != 0, "Invalid token");
+        require(dataHash != bytes32(0), "Invalid data hash");
+        require(!claimed[user][tokenId], "Achievement already claimed");
+
+        claimed[user][tokenId] = true;
+        achievementDataHash[user][tokenId] = dataHash;
+        _mint(user, tokenId, 1, "");
+
+        emit AchievementMinted(user, tokenId, dataHash, msg.sender);
     }
 
     function hasAchievement(
