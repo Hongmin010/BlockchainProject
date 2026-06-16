@@ -322,3 +322,65 @@ CREATE TABLE IF NOT EXISTS advanced_rate_history (
 
 CREATE INDEX IF NOT EXISTS idx_adv_rate_history_mode_level_block
   ON advanced_rate_history (mode, extra_level, block_number DESC);
+
+
+-- ============================================================
+--  v5 — 업적 NFT 시스템 (컨트랙트 선행 개발, mock 기반)
+--  (기존 DB 는 db/migrations/003_achievements.sql 로 적용)
+-- ============================================================
+
+-- ------------------------------------------------------------
+--  achievements : 업적 발급 상태 (온체인 인덱싱 + 오프체인 판정 통합)
+-- ------------------------------------------------------------
+--  ID 1, 2 (onchain) : 컨트랙트가 판정 → AchievementUnlocked 인덱싱으로 INSERT.
+--                      payload/data_hash 없음, status 는 바로 'minted'.
+--  ID 3~5 (offchain) : 백엔드 판정 → 'detected' INSERT → mint 호출
+--                      'minting' → 'minted'(tx_hash 저장) / 'failed'(에러 보관, 재시도 가능).
+--  UNIQUE(wallet, achievement_id) ← 중복 발급 원천 차단 (멱등 INSERT ON CONFLICT DO NOTHING).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS achievements (
+  id                       BIGSERIAL     PRIMARY KEY,
+
+  -- 업적 획득 지갑 (lowercase 정규화)
+  wallet                   VARCHAR(42)   NOT NULL,
+
+  -- 업적 ID (constants/achievements.js 와 동일, 컨트랙트팀 합의 1~5)
+  achievement_id           SMALLINT      NOT NULL,
+
+  -- 판정 위치: 'onchain'(인덱싱만) | 'offchain'(백엔드 판정 + mint 호출)
+  source                   VARCHAR(10)   NOT NULL
+                           CHECK (source IN ('onchain', 'offchain')),
+
+  -- AchievementUnlocked 의 itemId (온체인 업적만, 상남자=어느 아이템인지)
+  item_id                  NUMERIC(78,0),
+
+  -- 판정 근거 원본 (오프체인만) — lib/achievementHash.buildPayload 결과 그대로
+  payload                  JSONB,
+
+  -- keccak256(abi.encode(payload)) — 컨트랙트 mintAchievement 에 커밋한 값 (오프체인만)
+  data_hash                VARCHAR(66),
+
+  -- mint 트랜잭션 해시 (온체인 업적은 Unlocked 이벤트 tx)
+  tx_hash                  VARCHAR(66),
+  log_index                INTEGER,
+  block_number             BIGINT,
+
+  status                   VARCHAR(10)   NOT NULL DEFAULT 'detected'
+                           CHECK (status IN ('detected', 'minting', 'minted', 'failed')),
+
+  -- mint 실패 시 마지막 에러 메시지 (재시도 판단용)
+  last_error               TEXT,
+
+  created_at               TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  minted_at                TIMESTAMPTZ,
+  updated_at               TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+
+  -- 중복 발급 원천 차단
+  UNIQUE (wallet, achievement_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_achievements_wallet
+  ON achievements (wallet);
+-- mint 재시도 대상 스캔: detected/failed 만
+CREATE INDEX IF NOT EXISTS idx_achievements_pending_mint
+  ON achievements (status) WHERE status IN ('detected', 'failed');

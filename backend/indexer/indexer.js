@@ -86,6 +86,12 @@ const BASE_ABI = baseAbiJson.abi || baseAbiJson;
 const advAbiJson = require('../abi/AdvancedEnhancementGameVRF.json');
 const ADV_ABI = advAbiJson.abi || advAbiJson;
 
+// v5: 업적 NFT 컨트랙트 — 아직 미배포. 합의된 인터페이스 fragment 로 선행 개발,
+//     실제 ABI 도착 시 abi/achievements.fragment.json 만 교체하면 된다.
+const ACHIEVEMENTS_ABI = require('../abi/achievements.fragment.json');
+const { checkOffchainAchievements } = require('../lib/achievementJudge');
+const { mintDetected } = require('../lib/achievementMint');
+
 // ------------------------------------------------------------
 //  환경변수 및 상수
 // ------------------------------------------------------------
@@ -93,6 +99,8 @@ const RPC_URL = process.env.RPC_URL;
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 // v4: 고급강화 컨트랙트 주소 (미설정 시 base 만 구독 — 하위호환)
 const ADVANCED_CONTRACT_ADDRESS = process.env.ADVANCED_CONTRACT_ADDRESS;
+// v5: 업적 NFT 컨트랙트 주소 (미배포 — 미설정 시 업적 이벤트 구독 자동 제외)
+const ACHIEVEMENTS_NFT_ADDRESS = process.env.ACHIEVEMENTS_NFT_ADDRESS;
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 12_000);
 const BATCH_SIZE = Number(process.env.BATCH_SIZE || 1_000);
 const CONFIRMATION_BLOCKS = Number(process.env.CONFIRMATION_BLOCKS || 5);
@@ -128,6 +136,11 @@ const ADVANCED_HANDLERS = {
   AdvancedRateUpdated: handleAdvancedRateUpdated,
 };
 
+// v5: 업적 NFT 컨트랙트 이벤트 핸들러 (온체인 판정 업적 ID 1, 2)
+const ACHIEVEMENT_HANDLERS = {
+  AchievementUnlocked: handleAchievementUnlocked,
+};
+
 
 // ============================================================
 //  메인 루프
@@ -137,6 +150,7 @@ async function main() {
   console.log('[indexer]   RPC          :', RPC_URL);
   console.log('[indexer]   BASE         :', CONTRACT_ADDRESS);
   console.log('[indexer]   ADVANCED     :', ADVANCED_CONTRACT_ADDRESS || '(미설정 — base 만 구독)');
+  console.log('[indexer]   ACHIEVEMENTS :', ACHIEVEMENTS_NFT_ADDRESS || '(미설정 — 업적 이벤트 구독 제외)');
   console.log('[indexer]   BATCH_SIZE   :', BATCH_SIZE);
   console.log('[indexer]   CONFIRM_BLKS :', CONFIRMATION_BLOCKS);
 
@@ -148,8 +162,9 @@ async function main() {
   // 구독할 컨트랙트 소스. 주소가 없는 소스는 자동 제외(하위호환).
   // 컨트랙트마다 ABI 가 다르므로 iface 도 소스별로 둔다.
   const sources = [
-    { name: 'base',     address: CONTRACT_ADDRESS,          iface: new ethers.Interface(BASE_ABI), handlers: BASE_HANDLERS },
-    { name: 'advanced', address: ADVANCED_CONTRACT_ADDRESS, iface: new ethers.Interface(ADV_ABI),  handlers: ADVANCED_HANDLERS },
+    { name: 'base',         address: CONTRACT_ADDRESS,          iface: new ethers.Interface(BASE_ABI),          handlers: BASE_HANDLERS },
+    { name: 'advanced',     address: ADVANCED_CONTRACT_ADDRESS, iface: new ethers.Interface(ADV_ABI),           handlers: ADVANCED_HANDLERS },
+    { name: 'achievements', address: ACHIEVEMENTS_NFT_ADDRESS,  iface: new ethers.Interface(ACHIEVEMENTS_ABI),  handlers: ACHIEVEMENT_HANDLERS },
   ].filter((s) => s.address);
 
   // log.address(소문자) → source 빠른 조회용
@@ -295,6 +310,7 @@ async function handleEnhancementRequested(args, meta) {
  *   - user_items UPSERT 는 attempts 가 실제로 INSERT/UPDATE 된 경우(rowCount > 0)에만.
  */
 async function handleEnhancementResult(args, meta) {
+  let processed = false;   // v5: 이 이벤트가 "새로" 처리됐는지 (중복 재처리면 업적 훅 스킵)
   await db.withTransaction(async (tx) => {
     const attemptId = args.attemptId.toString();
     const user = args.user.toLowerCase();
@@ -336,6 +352,7 @@ async function handleEnhancementResult(args, meta) {
       // 이미 처리된 EnhancementResult — user_items 변경 SKIP (중복 +1 방지)
       return;
     }
+    processed = true;
 
     // 2) user_items UPSERT  ★ 컨트랙트 이벤트 없이 자동 갱신
     await tx.query(`
@@ -358,6 +375,46 @@ async function handleEnhancementResult(args, meta) {
       meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
     ]);
   });
+
+  // ── v5: 오프체인 업적 판정 훅 (ID 3, 4, 5) ──────────────────
+  //  새로 완료된 시도가 있을 때만, "해당 유저만" 검사한다 (전체 스캔 금지).
+  //  판정·mint 실패가 인덱싱(커서 진행)을 막으면 안 되므로 오류는 로그만 남긴다 —
+  //  놓친 mint 는 processPendingMints 재시도 경로가 회수한다.
+  if (processed) {
+    const user = args.user.toLowerCase();
+    try {
+      const newly = await checkOffchainAchievements(db, user);
+      for (const row of newly) {
+        await mintDetected(db, row);
+      }
+    } catch (err) {
+      console.error('[indexer] 업적 판정 훅 오류:', err.message);
+    }
+  }
+}
+
+
+/**
+ * (v5) AchievementUnlocked → achievements INSERT (온체인 판정 업적 ID 1, 2)
+ *
+ *  args: { user, achievementId, itemId }
+ *  판정 경계: 컨트랙트가 이미 판정·발급까지 끝낸 이벤트다 — 백엔드 재판정 금지,
+ *  기록만 한다. NFT 가 이미 발급됐으므로 status 는 바로 'minted'.
+ *  멱등성: UNIQUE(wallet, achievement_id) + ON CONFLICT DO NOTHING (재인덱싱 안전).
+ */
+async function handleAchievementUnlocked(args, meta) {
+  await db.query(`
+    INSERT INTO achievements
+      (wallet, achievement_id, source, item_id,
+       tx_hash, log_index, block_number, status, minted_at)
+    VALUES ($1, $2, 'onchain', $3, $4, $5, $6, 'minted', $7)
+    ON CONFLICT (wallet, achievement_id) DO NOTHING
+  `, [
+    args.user.toLowerCase(),
+    Number(args.achievementId),
+    args.itemId.toString(),
+    meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
+  ]);
 }
 
 
@@ -613,6 +670,8 @@ module.exports = {
   main,
   BASE_ABI,
   ADV_ABI,
+  ACHIEVEMENTS_ABI,
   baseHandlers: BASE_HANDLERS,
   advancedHandlers: ADVANCED_HANDLERS,
+  achievementHandlers: ACHIEVEMENT_HANDLERS,
 };

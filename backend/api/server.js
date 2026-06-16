@@ -48,8 +48,10 @@
  *   GET /api/advanced/rates/history      ★ 고급강화 확률표 변경 이력
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
- *   GET /api/achievements/holders        업적 NFT 보유자 목록 (RPC read-on-demand)
- *   GET /api/achievements/:address       업적 NFT 발급 여부 조회 (T10, RPC read-on-demand)
+ *   GET /api/achievements/holders        업적 NFT 보유자 목록 (구 컨트랙트, RPC read-on-demand)
+ *   GET /api/achievements/:wallet        ★ 온/오프체인 통합 업적 목록 (v5 신규 시스템)
+ *   GET /api/achievements/:wallet/:achievementId/proof  ★ 오프체인 업적 근거 공개 (제3자 재검증)
+ *   GET /api/achievements/legacy/:address  구 컨트랙트 발급 여부 조회 (deprecated)
  *
  *  ※ 차별화 포인트 매핑
  *     #1 통계 검정 (Wilson 95% CI + 카이제곱 p-value)
@@ -74,6 +76,8 @@ const {
 } = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
 const { createAchievementsClient, ACHIEVEMENTS } = require('../utils/achievements');
+// v5: 신규 업적 시스템 (컨트랙트팀 합의 ID 1~5, achievements 테이블 기반)
+const { ACHIEVEMENT_META, ACHIEVEMENT_PAYLOAD_TYPES } = require('../constants/achievements');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -950,7 +954,137 @@ app.get('/api/achievements/holders', async (_req, res, next) => {
 });
 
 /**
- * GET /api/achievements/:address?itemId=72
+ * GET /api/achievements/:wallet/:achievementId/proof   ★ 제3자 재검증용 근거 공개
+ *
+ *  오프체인 판정 업적(ID 3, 4, 5)의 payload 원본 + data_hash 를 공개한다.
+ *  검증 절차: payload 를 ACHIEVEMENT_PAYLOAD_TYPES 순서로 abi.encode →
+ *  keccak256 → 온체인 mintAchievement 에 커밋된 dataHash 와 대조.
+ *  (lib/achievementHash.js, docs/hash-test-vector.md 와 동일 스펙)
+ *
+ *  반환
+ *  ----
+ *   200 { wallet, achievementId, name, status, payload, dataHash, mintTxHash, verification }
+ *   400 { error:'invalid_address' | 'invalid_achievement_id' }
+ *   404 { error:'achievement_not_found' }      ← 해당 지갑이 이 업적 미보유
+ *   404 { error:'no_offchain_proof' }          ← 온체인 판정 업적(1,2)은 payload 가 없음
+ *
+ *  ※ /:wallet 라우트와 경로 세그먼트 수가 달라 매칭 충돌 없음.
+ */
+app.get('/api/achievements/:wallet/:achievementId/proof', async (req, res, next) => {
+  const wallet = normalizeAddress(req.params.wallet);
+  if (!wallet) {
+    return res.status(400).json({ error: 'invalid_address', message: 'wallet must match /^0x[a-fA-F0-9]{40}$/' });
+  }
+  const achievementId = Number(req.params.achievementId);
+  if (!Number.isInteger(achievementId) || !ACHIEVEMENT_META[achievementId]) {
+    return res.status(400).json({ error: 'invalid_achievement_id', message: 'achievementId must be 1~5' });
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT achievement_id, source, payload, data_hash, tx_hash, status, minted_at
+        FROM achievements
+       WHERE wallet = $1 AND achievement_id = $2
+    `, [wallet, achievementId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'achievement_not_found', wallet, achievementId });
+    }
+    const row = rows[0];
+    if (row.source === 'onchain') {
+      // 온체인 판정 업적의 근거는 AchievementUnlocked 이벤트 자체 — payload 없음
+      return res.status(404).json({
+        error: 'no_offchain_proof',
+        message: '온체인 판정 업적(1, 2)은 컨트랙트가 직접 판정한다 — 근거는 txHash 의 AchievementUnlocked 이벤트',
+        txHash: row.tx_hash,
+      });
+    }
+
+    return res.json({
+      wallet,
+      achievementId,
+      name: ACHIEVEMENT_META[achievementId].name,
+      status: row.status,
+      payload: row.payload,            // 판정 근거 원본 (JSONB)
+      dataHash: row.data_hash,         // keccak256(abi.encode(payload)) — 온체인 커밋값
+      mintTxHash: row.tx_hash,         // status='minted' 일 때만 채워짐
+      mintedAt: row.minted_at,
+      verification: {
+        formula: 'dataHash == keccak256(abi.encode(wallet, achievementId, evidenceA, evidenceB, fromBlock, toBlock))',
+        types: ACHIEVEMENT_PAYLOAD_TYPES,
+        evidenceMeaning: achievementId === 5
+          ? 'evidenceA = 10강 이상 마리수, evidenceB = 0'
+          : 'evidenceA = 성공수, evidenceB = 시도수',
+        note: '블록 범위 [fromBlock, toBlock] 의 온체인 이벤트만으로 evidence 를 재산출할 수 있다',
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/achievements/:wallet   ★ 온/오프체인 통합 업적 목록 (v5 신규 시스템)
+ *
+ *  achievements 테이블(온체인 인덱싱 + 오프체인 판정 통합)을 기반으로
+ *  합의된 업적 5종 전체에 보유 여부를 붙여 반환한다.
+ *
+ *  ⚠️ v4 까지의 구 컨트랙트(EnhancementAchievements) RPC 즉석 조회는
+ *     /api/achievements/legacy/:address 로 이동 (구 ID 체계와 신규 ID 1~5 가
+ *     충돌하므로 같은 경로에 공존 불가).
+ *
+ *  반환
+ *  ----
+ *   200 { wallet, achievements: [{ achievementId, name, source, condition,
+ *         unlocked, status, itemId, txHash, dataHash, mintedAt, proofUrl }] }
+ *   400 { error:'invalid_address' }
+ */
+app.get('/api/achievements/:wallet', async (req, res, next) => {
+  const wallet = normalizeAddress(req.params.wallet);
+  if (!wallet) {
+    return res.status(400).json({ error: 'invalid_address', message: 'wallet must match /^0x[a-fA-F0-9]{40}$/' });
+  }
+  try {
+    const { rows } = await db.query(`
+      SELECT achievement_id, source, item_id, data_hash, tx_hash,
+             status, minted_at, created_at
+        FROM achievements
+       WHERE wallet = $1
+    `, [wallet]);
+    const byId = new Map(rows.map((r) => [Number(r.achievement_id), r]));
+
+    const achievements = Object.values(ACHIEVEMENT_META).map((meta) => {
+      const row = byId.get(meta.id);
+      return {
+        achievementId: meta.id,
+        name: meta.name,
+        source: meta.source,
+        condition: meta.condition,
+        // unlocked = NFT 발급 완료. detected/minting/failed 는 status 로 구분.
+        unlocked: !!row && row.status === 'minted',
+        status: row ? row.status : null,
+        itemId: row && row.item_id != null ? row.item_id : null,
+        txHash: row ? row.tx_hash : null,
+        dataHash: row ? row.data_hash : null,
+        mintedAt: row ? row.minted_at : null,
+        detectedAt: row ? row.created_at : null,
+        proofUrl: row && row.source === 'offchain'
+          ? `/api/achievements/${wallet}/${meta.id}/proof`
+          : null,
+      };
+    });
+
+    return res.json({ wallet, achievements });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/achievements/legacy/:address?itemId=72   (구 시스템 — deprecated)
+ *
+ *  v4 까지의 구 컨트랙트(EnhancementAchievements, 레지스트리 기반) RPC 즉석 조회.
+ *  신규 업적 시스템(위 /:wallet)과 ID 체계가 달라 별도 경로로 분리 보존.
+ *  구 컨트랙트 은퇴 시 이 라우트도 함께 제거 예정.
  *
  *  반환
  *  ----
@@ -964,7 +1098,7 @@ app.get('/api/achievements/holders', async (_req, res, next) => {
  *   502 { error:'rpc_error' }                       ← RPC 장애 (우리 서버 문제 아님)
  *   503 { error:'achievements_not_configured' }     ← 환경변수 미설정
  */
-app.get('/api/achievements/:address', async (req, res) => {
+app.get('/api/achievements/legacy/:address', async (req, res) => {
   if (!achievementsClient.isConfigured()) {
     return res.status(503).json({
       error: 'achievements_not_configured',
