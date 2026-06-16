@@ -1,28 +1,28 @@
 {
-  "name": "CatForge: Lucky Streak",
-  "description": "Awarded to a player who achieved three consecutive enhancement successes without a single failure.",
-  "image": "ipfs://IMAGE_CID/lucky-streak.png",
+  "name": "CatForge: Unbroken After Ruin",
+  "description": "Awarded to a player who reached +20 after enduring at least five destructions.",
+  "image": "ipfs://IMAGE_CID/unbroken-after-ruin.png",
   "external_url": "https://catforge.example.com",
   "attributes": [
     {
       "trait_type": "Achievement",
-      "value": "Lucky Streak"
+      "value": "Unbroken After Ruin"
     },
     {
       "trait_type": "Achievement Type",
-      "value": "Enhancement Streak"
+      "value": "Destruction Survivor"
     },
     {
-      "trait_type": "Consecutive Successes",
-      "value": 3
+      "trait_type": "Required Destructions",
+      "value": 5
     },
     {
       "trait_type": "Requirement",
-      "value": "Achieve 3 consecutive enhancement successes"
+      "value": "Reach +20 after at least 5 destructions"
     },
     {
       "trait_type": "Rarity",
-      "value": "Epic"
+      "value": "Mythic"
     },
     {
       "trait_type": "Transferability",

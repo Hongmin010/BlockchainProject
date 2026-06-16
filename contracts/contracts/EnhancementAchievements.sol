@@ -18,6 +18,7 @@ interface IAdvancedEnhancementGame {
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
+            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -32,7 +33,13 @@ interface IAdvancedEnhancementGame {
 contract EnhancementAchievements is ERC1155, Ownable {
     uint256 public constant MAX_ENHANCEMENT_ACHIEVEMENT_ID = 6;
     uint256 public constant SUCCESS_STREAK_ACHIEVEMENT_ID = 7;
+    uint256 public constant DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID = 8;
+    uint256 public constant GUARANTEED_SAFE_ACHIEVEMENT_ID = 9;
+    uint256 public constant VERTICAL_DROP_ACHIEVEMENT_ID = 10;
     uint8 public constant SUCCESS_STREAK_THRESHOLD = 3;
+    uint64 public constant DESTRUCTION_SURVIVOR_THRESHOLD = 5;
+    uint64 public constant GUARANTEED_SAFE_THRESHOLD = 10;
+    uint8 public constant VERTICAL_DROP_THRESHOLD = 10;
 
     IAdvancedEnhancementGame public immutable advancedGame;
     uint8 public immutable maxLevel;
@@ -80,6 +87,18 @@ contract EnhancementAchievements is ERC1155, Ownable {
 
     function claimSuccessStreak(uint256 itemId) external {
         _mintSuccessStreak(msg.sender, itemId);
+    }
+
+    function claimDestructionSurvivor(uint256 itemId) external {
+        _mintDestructionSurvivor(msg.sender, itemId);
+    }
+
+    function claimGuaranteedSafe(uint256 itemId) external {
+        _mintGuaranteedSafe(msg.sender, itemId);
+    }
+
+    function claimVerticalDrop(uint256 itemId) external {
+        _mintVerticalDrop(msg.sender, itemId);
     }
 
     function awardMaxEnhancement(address user, uint256 itemId) external onlyOwner {
@@ -140,6 +159,34 @@ contract EnhancementAchievements is ERC1155, Ownable {
             _getMaxSuccessStreak(user, itemId) >= SUCCESS_STREAK_THRESHOLD;
     }
 
+    function canClaimDestructionSurvivor(
+        address user,
+        uint256 itemId
+    ) external view returns (bool) {
+        return
+            !claimed[user][DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID] &&
+            advancedGame.getTotalLevel(user, itemId) >= maxLevel &&
+            _getTotalDestructions(user, itemId) >= DESTRUCTION_SURVIVOR_THRESHOLD;
+    }
+
+    function canClaimGuaranteedSafe(
+        address user,
+        uint256 itemId
+    ) external view returns (bool) {
+        return
+            !claimed[user][GUARANTEED_SAFE_ACHIEVEMENT_ID] &&
+            _getTotalGuaranteedSuccesses(user, itemId) >= GUARANTEED_SAFE_THRESHOLD;
+    }
+
+    function canClaimVerticalDrop(
+        address user,
+        uint256 itemId
+    ) external view returns (bool) {
+        return
+            !claimed[user][VERTICAL_DROP_ACHIEVEMENT_ID] &&
+            _getMaxDestroyedLevelLoss(user, itemId) >= VERTICAL_DROP_THRESHOLD;
+    }
+
     function _mintMaxEnhancement(address user, uint256 itemId) internal {
         require(user != address(0), "Invalid user");
         require(
@@ -187,6 +234,79 @@ contract EnhancementAchievements is ERC1155, Ownable {
         );
     }
 
+    function _mintDestructionSurvivor(address user, uint256 itemId) internal {
+        require(user != address(0), "Invalid user");
+        require(
+            !claimed[user][DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID],
+            "Achievement already claimed"
+        );
+
+        uint8 totalLevel = advancedGame.getTotalLevel(user, itemId);
+        require(totalLevel >= maxLevel, "Item is not max level");
+        require(
+            _getTotalDestructions(user, itemId) >= DESTRUCTION_SURVIVOR_THRESHOLD,
+            "Destruction count not met"
+        );
+
+        claimed[user][DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID] = true;
+        _mint(user, DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID, 1, "");
+
+        emit AchievementClaimed(
+            user,
+            DESTRUCTION_SURVIVOR_ACHIEVEMENT_ID,
+            itemId,
+            totalLevel
+        );
+    }
+
+    function _mintGuaranteedSafe(address user, uint256 itemId) internal {
+        require(user != address(0), "Invalid user");
+        require(
+            !claimed[user][GUARANTEED_SAFE_ACHIEVEMENT_ID],
+            "Achievement already claimed"
+        );
+        require(
+            _getTotalGuaranteedSuccesses(user, itemId) >= GUARANTEED_SAFE_THRESHOLD,
+            "Guaranteed safe count not met"
+        );
+
+        uint8 totalLevel = advancedGame.getTotalLevel(user, itemId);
+
+        claimed[user][GUARANTEED_SAFE_ACHIEVEMENT_ID] = true;
+        _mint(user, GUARANTEED_SAFE_ACHIEVEMENT_ID, 1, "");
+
+        emit AchievementClaimed(
+            user,
+            GUARANTEED_SAFE_ACHIEVEMENT_ID,
+            itemId,
+            totalLevel
+        );
+    }
+
+    function _mintVerticalDrop(address user, uint256 itemId) internal {
+        require(user != address(0), "Invalid user");
+        require(
+            !claimed[user][VERTICAL_DROP_ACHIEVEMENT_ID],
+            "Achievement already claimed"
+        );
+        require(
+            _getMaxDestroyedLevelLoss(user, itemId) >= VERTICAL_DROP_THRESHOLD,
+            "Destroyed level loss not met"
+        );
+
+        uint8 totalLevel = advancedGame.getTotalLevel(user, itemId);
+
+        claimed[user][VERTICAL_DROP_ACHIEVEMENT_ID] = true;
+        _mint(user, VERTICAL_DROP_ACHIEVEMENT_ID, 1, "");
+
+        emit AchievementClaimed(
+            user,
+            VERTICAL_DROP_ACHIEVEMENT_ID,
+            itemId,
+            totalLevel
+        );
+    }
+
     function _getMaxSuccessStreak(
         address user,
         uint256 itemId
@@ -197,6 +317,83 @@ contract EnhancementAchievements is ERC1155, Ownable {
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
+            uint64 totalGuaranteedSuccesses,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        ) = advancedGame.getAchievementStats(user, itemId);
+
+        totalAttempts;
+        totalSuccesses;
+        totalFailures;
+        totalDestructions;
+        totalSafeDowngrades;
+        totalGuaranteedSuccesses;
+        highestTotalLevel;
+        currentSuccessStreak;
+        currentFailureStreak;
+        maxFailureStreak;
+        lastDestroyedLevelLoss;
+        maxDestroyedLevelLoss;
+        totalDestroyedLevelLoss;
+
+        return maxSuccessStreak;
+    }
+
+    function _getTotalDestructions(
+        address user,
+        uint256 itemId
+    ) internal view returns (uint64) {
+        (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint64 totalGuaranteedSuccesses,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        ) = advancedGame.getAchievementStats(user, itemId);
+
+        totalAttempts;
+        totalSuccesses;
+        totalFailures;
+        totalSafeDowngrades;
+        totalGuaranteedSuccesses;
+        highestTotalLevel;
+        currentSuccessStreak;
+        maxSuccessStreak;
+        currentFailureStreak;
+        maxFailureStreak;
+        lastDestroyedLevelLoss;
+        maxDestroyedLevelLoss;
+        totalDestroyedLevelLoss;
+
+        return totalDestructions;
+    }
+
+    function _getTotalGuaranteedSuccesses(
+        address user,
+        uint256 itemId
+    ) internal view returns (uint64) {
+        (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -214,13 +411,52 @@ contract EnhancementAchievements is ERC1155, Ownable {
         totalSafeDowngrades;
         highestTotalLevel;
         currentSuccessStreak;
+        maxSuccessStreak;
         currentFailureStreak;
         maxFailureStreak;
         lastDestroyedLevelLoss;
         maxDestroyedLevelLoss;
         totalDestroyedLevelLoss;
 
-        return maxSuccessStreak;
+        return totalGuaranteedSuccesses;
+    }
+
+    function _getMaxDestroyedLevelLoss(
+        address user,
+        uint256 itemId
+    ) internal view returns (uint8) {
+        (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint64 totalGuaranteedSuccesses,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        ) = advancedGame.getAchievementStats(user, itemId);
+
+        totalAttempts;
+        totalSuccesses;
+        totalFailures;
+        totalDestructions;
+        totalSafeDowngrades;
+        totalGuaranteedSuccesses;
+        highestTotalLevel;
+        currentSuccessStreak;
+        maxSuccessStreak;
+        currentFailureStreak;
+        maxFailureStreak;
+        lastDestroyedLevelLoss;
+        totalDestroyedLevelLoss;
+
+        return maxDestroyedLevelLoss;
     }
 
     function _beforeTokenTransfer(
