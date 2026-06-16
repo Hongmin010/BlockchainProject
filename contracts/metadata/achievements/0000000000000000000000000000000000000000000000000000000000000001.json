@@ -1,32 +1,32 @@
 {
-  "name": "CatForge: Veteran Validator",
-  "description": "Awarded to a player who accumulated 100 verified enhancement records, contributing to the integrity and transparency of CatForge.",
-  "image": "ipfs://IMAGE_CID/veteran-validator.png",
+  "name": "CatForge: Master Enhancer",
+  "description": "Awarded to a player who successfully enhanced a CatForge item to +15, proving exceptional dedication, skill, and perseverance.",
+  "image": "ipfs://IMAGE_CID/master-enhancer.png",
   "external_url": "https://catforge.example.com",
   "attributes": [
     {
       "trait_type": "Achievement",
-      "value": "Veteran Validator"
+      "value": "Master Enhancer"
     },
     {
-      "trait_type": "Achievement Type",
-      "value": "Validation"
-    },
-    {
-      "trait_type": "Validated Records",
-      "value": 100
+      "trait_type": "Enhancement Level",
+      "value": 15
     },
     {
       "trait_type": "Requirement",
-      "value": "Accumulate 100 verified enhancement records"
+      "value": "Reach +15 Enhancement"
     },
     {
       "trait_type": "Rarity",
-      "value": "Epic"
+      "value": "Legendary"
     },
     {
       "trait_type": "Transferability",
       "value": "Soulbound"
+    },
+    {
+      "trait_type": "Category",
+      "value": "Progression Achievement"
     }
   ]
 }

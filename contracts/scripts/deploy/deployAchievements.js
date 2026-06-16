@@ -29,8 +29,7 @@ function getAchievementParams() {
 
 async function main() {
   const { ethers } = await network.connect();
-  const { advancedGameAddress, metadataUri, maxLevel, backendMinter } =
-    getAchievementParams();
+  const { advancedGameAddress, metadataUri, maxLevel } = getAchievementParams();
 
   const [deployer] = await ethers.getSigners();
 
@@ -38,7 +37,6 @@ async function main() {
   console.log("advanced game:", advancedGameAddress);
   console.log("metadata URI:", metadataUri);
   console.log("required level:", maxLevel.toString());
-  console.log("backend minter:", backendMinter ?? "(not set)");
 
   const EnhancementAchievements = await ethers.getContractFactory(
     "EnhancementAchievements",
@@ -56,14 +54,6 @@ async function main() {
     "EnhancementAchievements deployed to:",
     await achievements.getAddress(),
   );
-
-  if (backendMinter && backendMinter !== ethers.ZeroAddress) {
-    const minterAddress = ethers.getAddress(backendMinter);
-    const tx = await achievements.setMinter(minterAddress, true);
-    console.log("setMinter tx:", tx.hash);
-    await tx.wait();
-    console.log("backend minter registered:", minterAddress);
-  }
 }
 
 main().catch((error) => {

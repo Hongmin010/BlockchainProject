@@ -582,11 +582,6 @@
         "type": "uint64"
       },
       {
-        "internalType": "uint64",
-        "name": "totalGuaranteedSuccesses",
-        "type": "uint64"
-      },
-      {
         "internalType": "uint8",
         "name": "highestTotalLevel",
         "type": "uint8"
@@ -825,11 +820,6 @@
       {
         "internalType": "uint64",
         "name": "totalSafeDowngrades",
-        "type": "uint64"
-      },
-      {
-        "internalType": "uint64",
-        "name": "totalGuaranteedSuccesses",
         "type": "uint64"
       },
       {
