@@ -4,14 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode } from '../hooks/useAdvancedForge';
+import { useAdvancedForge, AdvancedMode, MAX_EXTRA_LEVEL, MAX_TOTAL_LEVEL } from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
   fetchMerkleItems,
-  fetchAchievements,
   fetchAdvancedStats,
   fetchAdvancedRatesHistory,
   fetchAdvancedRecentAttempts,
@@ -33,13 +32,12 @@ const DEFAULT_PROB_TABLE = [
   { stage: 'Lv.4 → Lv.5', prob: 10 },
 ];
 
-const DEFAULT_ADV_PROB_TABLE = [
-  { stage: 'Lv.5 → Lv.6', successProb: null, destroyProb: null },
-  { stage: 'Lv.6 → Lv.7', successProb: null, destroyProb: null },
-  { stage: 'Lv.7 → Lv.8', successProb: null, destroyProb: null },
-  { stage: 'Lv.8 → Lv.9', successProb: null, destroyProb: null },
-  { stage: 'Lv.9 → Lv.10', successProb: null, destroyProb: null },
-];
+// 상급 확률표: extraLevel 0~14 (Lv.5→6 ... Lv.19→20), 총 15단계 (API 로드 전 폴백)
+const DEFAULT_ADV_PROB_TABLE = Array.from({ length: MAX_EXTRA_LEVEL }, (_, i) => ({
+  stage: `Lv.${5 + i} → Lv.${6 + i}`,
+  successProb: null,
+  destroyProb: null,
+}));
 
 const ENHANCEMENT_TYPE = 0;
 
@@ -90,23 +88,6 @@ export default function Game({ address, onConnect, wallet }) {
   useEffect(() => {
     if (isRiskyBlocked) setAdvMode(AdvancedMode.Safe);
   }, [isRiskyBlocked]);
-
-  // ── 업적 상태 ────────────────────────────────────────────────
-  const [achievement, setAchievement] = useState(null);
-
-  useEffect(() => {
-    if (!address) return;
-    fetchAchievements(address)
-      .then((data) => {
-        const ach = data.achievements?.[0];
-        setAchievement({
-          claimed: ach?.claimed ?? false,
-          label: ach?.label ?? 'Lv.10 달성',
-          description: ach?.description ?? '최대 레벨 달성 시 자동 지급',
-        });
-      })
-      .catch(() => {});
-  }, [address]);
 
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
@@ -271,12 +252,6 @@ export default function Game({ address, onConnect, wallet }) {
       fetchUserStats(address)
         .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
         .catch(() => {});
-      fetchAchievements(address)
-        .then((data) => {
-          const ach = data.achievements?.[0];
-          if (ach) setAchievement({ claimed: ach.claimed, label: ach.label, description: ach.description });
-        })
-        .catch(() => {});
     }, 20_000);
     return () => clearTimeout(timer);
   }, [advStatus, address, advLastResult]);
@@ -319,7 +294,14 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
-  const displayItems = userItems;
+  // 목록은 인덱서 DB(fetchUserStats) 기반이라 인덱싱이 밀리면 stale함.
+  // 현재 선택된 고양이는 컨트랙트 직접 조회값(displayLevel)이 있으므로 그 라이브 레벨로 덮어써
+  // 무대/현재 단계와 목록 썸네일 레벨이 어긋나지 않게 한다.
+  const displayItems = userItems.map((it) =>
+    Number(it.itemId) === selectedItemId
+      ? { ...it, level: displayLevel, totalLevel: displayLevel }
+      : it
+  );
 
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
@@ -354,7 +336,7 @@ export default function Game({ address, onConnect, wallet }) {
                 <span className={styles.levelCurrent}>Lv. {displayLevel}</span>
                 <span style={{ color: 'var(--ink-3)' }}>→</span>
                 <span className={isAdvancedMode ? styles.levelNextAdvanced : styles.levelNext}>
-                  {displayLevel < 10 ? `Lv. ${displayLevel + 1}` : 'MAX'}
+                  {displayLevel < MAX_TOTAL_LEVEL ? `Lv. ${displayLevel + 1}` : 'MAX'}
                 </span>
               </div>
             </div>
@@ -383,9 +365,9 @@ export default function Game({ address, onConnect, wallet }) {
                   <StageBar current={5} max={5} />
                 </div>
                 <span className={styles.stageBarArrow}>›</span>
-                <div className={styles.stageBarSection}>
+                <div className={`${styles.stageBarSection} ${styles.stageBarSectionAdvanced}`}>
                   <span className={`${styles.stageBarLabel} ${styles.stageBarLabelAdvanced}`}>상급</span>
-                  <StageBar current={extraLevel} max={5} variant="advanced" />
+                  <StageBar current={extraLevel} max={MAX_EXTRA_LEVEL} variant="advanced" compact labelOffset={5} />
                 </div>
               </div>
             )}
@@ -486,7 +468,7 @@ export default function Game({ address, onConnect, wallet }) {
                   ? '🔑 등록 확인 중…'
                   : '⚒ 강화 시도하기'}
               </Button>
-            ) : totalLevel >= 10 ? (
+            ) : totalLevel >= MAX_TOTAL_LEVEL ? (
               <Button variant="primary" size="xl" disabled style={{ flex: '1 1 auto' }}>
                 🎉 최고 레벨!
               </Button>
@@ -549,30 +531,6 @@ export default function Game({ address, onConnect, wallet }) {
             isRiskyBlocked={isRiskyBlocked}
             safeDropStreak={safeDropStreak}
           />
-
-          {/* 업적 카드 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h3 className={styles.cardTitle}>업적</h3>
-              <span className="cf-cap">on-chain NFT</span>
-            </div>
-            <div className={styles.achievementItem}>
-              <div className={styles.achievementIcon}>🏆</div>
-              <div className={styles.achievementBody}>
-                <div className={styles.achievementLabel}>
-                  {achievement?.label ?? 'Lv.10 달성'}
-                </div>
-                <div className={styles.achievementDesc}>
-                  {achievement?.description ?? '최대 레벨 달성 시 자동 지급'}
-                </div>
-              </div>
-              {achievement?.claimed ? (
-                <span className={styles.achievementBadgeClaimed}>획득</span>
-              ) : (
-                <span className={styles.achievementBadgePending}>미획득</span>
-              )}
-            </div>
-          </div>
 
           {/* 최근 강화 결과 */}
           <RecentAttemptsCard

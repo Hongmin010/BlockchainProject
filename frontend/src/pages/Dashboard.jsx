@@ -31,7 +31,8 @@ function ErrorMsg({ msg }) {
 
 const CIRCUMFERENCE = 2 * Math.PI * 80;
 
-const ADV_LEVEL_LABELS = ['Lv.5→6', 'Lv.6→7', 'Lv.7→8', 'Lv.8→9', 'Lv.9→10'];
+// 상급 강화 단계 라벨: extraLevel 0~14 (Lv.5→6 ... Lv.19→20), 총 15단계
+const ADV_LEVEL_LABELS = Array.from({ length: 15 }, (_, i) => `Lv.${5 + i}→${6 + i}`);
 
 // 행의 표본 수 (safe는 observedTotal, risky는 observed.total)
 const advSampleSize = (row) => row.observedTotal ?? row.observed?.total ?? 0;

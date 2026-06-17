@@ -198,19 +198,28 @@ export async function fetchMerkleItems(address) {
 }
 
 /**
- * GET /api/achievements/:address?itemId=N
- * 업적 목록 + 특정 아이템 클레임 가능 여부
+ * GET /api/achievements/:wallet  (백엔드 업적 시스템 v5 — 신규 ID 1~5)
+ * 온/오프체인 통합 업적 목록 + 보유 여부
  *
- * @param {string} address
- * @param {number|string|null} itemId
+ * @param {string} wallet — 0x... 지갑 주소
  *
  * 반환 예시
- * { user, contract, achievements: [{ achievementId, key, label, description, claimed }],
- *   itemId, canClaimMaxEnhancement: bool }
+ * {
+ *   wallet: '0x9a7f...9aff',
+ *   achievements: [
+ *     {
+ *       achievementId: 4, name: '천운', source: 'offchain',
+ *       condition: '관측 성공률이 ...', unlocked: true, status: 'minted',
+ *       itemId: null, txHash: '0x...', dataHash: '0x...', mintedAt: '...',
+ *       proofUrl: '/api/achievements/0x.../4/proof'
+ *     }, ...
+ *   ]
+ * }
+ *  — unlocked = NFT 발급 완료(status: 'minted'). 'detected'|'minting'|'failed' 는 발급 전.
+ *  — 구 컨트랙트(legacy) 응답은 GET /api/achievements/legacy/:address 로 이동됨.
  */
-export async function fetchAchievements(address, itemId = null) {
-  const params = itemId != null ? { itemId } : {};
-  return api.get(`/api/achievements/${address}`, { params });
+export async function fetchAchievements(wallet) {
+  return api.get(`/api/achievements/${wallet}`);
 }
 
 // ─── /api/ranking ──────────────────────────────────────────────
