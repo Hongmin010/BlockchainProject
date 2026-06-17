@@ -19,6 +19,10 @@ export const AdvancedMode = {
   Risky: 1,
 };
 
+// 컨트랙트 AdvancedEnhancement.sol 상수와 동일 (기본 5강 + extra 15 = 최종 20강)
+export const MAX_EXTRA_LEVEL = 15;
+export const MAX_TOTAL_LEVEL = 20;
+
 function getContract(signerOrProvider) {
   return new Contract(CONTRACT_ADDRESS, ABI, signerOrProvider);
 }
@@ -165,7 +169,7 @@ export function useAdvancedForge({ signer, provider, address }) {
         setError('이미 강화가 진행 중입니다. VRF 결과를 기다려 주세요.');
         return;
       }
-      if (extraLevel >= 5) {
+      if (extraLevel >= MAX_EXTRA_LEVEL) {
         setError('이미 최고 레벨입니다.');
         return;
       }

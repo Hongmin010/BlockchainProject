@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode } from '../hooks/useAdvancedForge';
+import { useAdvancedForge, AdvancedMode, MAX_EXTRA_LEVEL, MAX_TOTAL_LEVEL } from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
@@ -32,13 +32,12 @@ const DEFAULT_PROB_TABLE = [
   { stage: 'Lv.4 → Lv.5', prob: 10 },
 ];
 
-const DEFAULT_ADV_PROB_TABLE = [
-  { stage: 'Lv.5 → Lv.6', successProb: null, destroyProb: null },
-  { stage: 'Lv.6 → Lv.7', successProb: null, destroyProb: null },
-  { stage: 'Lv.7 → Lv.8', successProb: null, destroyProb: null },
-  { stage: 'Lv.8 → Lv.9', successProb: null, destroyProb: null },
-  { stage: 'Lv.9 → Lv.10', successProb: null, destroyProb: null },
-];
+// 상급 확률표: extraLevel 0~14 (Lv.5→6 ... Lv.19→20), 총 15단계 (API 로드 전 폴백)
+const DEFAULT_ADV_PROB_TABLE = Array.from({ length: MAX_EXTRA_LEVEL }, (_, i) => ({
+  stage: `Lv.${5 + i} → Lv.${6 + i}`,
+  successProb: null,
+  destroyProb: null,
+}));
 
 const ENHANCEMENT_TYPE = 0;
 
@@ -330,7 +329,7 @@ export default function Game({ address, onConnect, wallet }) {
                 <span className={styles.levelCurrent}>Lv. {displayLevel}</span>
                 <span style={{ color: 'var(--ink-3)' }}>→</span>
                 <span className={isAdvancedMode ? styles.levelNextAdvanced : styles.levelNext}>
-                  {displayLevel < 10 ? `Lv. ${displayLevel + 1}` : 'MAX'}
+                  {displayLevel < MAX_TOTAL_LEVEL ? `Lv. ${displayLevel + 1}` : 'MAX'}
                 </span>
               </div>
             </div>
@@ -359,9 +358,9 @@ export default function Game({ address, onConnect, wallet }) {
                   <StageBar current={5} max={5} />
                 </div>
                 <span className={styles.stageBarArrow}>›</span>
-                <div className={styles.stageBarSection}>
+                <div className={`${styles.stageBarSection} ${styles.stageBarSectionAdvanced}`}>
                   <span className={`${styles.stageBarLabel} ${styles.stageBarLabelAdvanced}`}>상급</span>
-                  <StageBar current={extraLevel} max={5} variant="advanced" />
+                  <StageBar current={extraLevel} max={MAX_EXTRA_LEVEL} variant="advanced" compact labelOffset={5} />
                 </div>
               </div>
             )}
@@ -462,7 +461,7 @@ export default function Game({ address, onConnect, wallet }) {
                   ? '🔑 등록 확인 중…'
                   : '⚒ 강화 시도하기'}
               </Button>
-            ) : totalLevel >= 10 ? (
+            ) : totalLevel >= MAX_TOTAL_LEVEL ? (
               <Button variant="primary" size="xl" disabled style={{ flex: '1 1 auto' }}>
                 🎉 최고 레벨!
               </Button>

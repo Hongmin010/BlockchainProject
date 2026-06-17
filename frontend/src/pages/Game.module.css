@@ -146,6 +146,12 @@
   gap: 4px;
 }
 
+/* 상급(15칸)은 남은 폭을 채우고 칩이 줄바꿈되도록 */
+.stageBarSectionAdvanced {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .stageBarLabel {
   font-family: var(--mono);
   font-size: 9px;
@@ -162,8 +168,7 @@
 .stageBarArrow {
   font-size: 20px;
   color: var(--ink-4);
-  align-self: flex-end;
-  margin-bottom: 2px;
+  align-self: center;
 }
 
 /* ── LV 뱃지 상급 변형 ── */
