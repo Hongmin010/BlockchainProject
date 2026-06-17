@@ -89,6 +89,7 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
     struct AchievementStats {
         uint64 totalAttempts;
         uint64 totalSuccesses;
+        uint64 totalGuaranteedSuccesses;
         uint64 totalFailures;
         uint64 totalDestructions;
         uint64 totalSafeDowngrades;
@@ -164,6 +165,7 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         uint256 indexed itemId,
         uint64 totalAttempts,
         uint64 totalSuccesses,
+        uint64 totalGuaranteedSuccesses,
         uint64 totalFailures,
         uint64 totalDestructions,
         uint8 highestTotalLevel,
@@ -617,6 +619,10 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         if (isSuccess) {
             stats.totalSuccesses += 1;
 
+            if (resultType == uint8(AdvancedResultType.Guaranteed)) {
+                stats.totalGuaranteedSuccesses += 1;
+            }
+
             stats.currentSuccessStreak = _incrementUint8(stats.currentSuccessStreak);
             if (stats.currentSuccessStreak > stats.maxSuccessStreak) {
                 stats.maxSuccessStreak = stats.currentSuccessStreak;
@@ -659,6 +665,7 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
             itemId,
             stats.totalAttempts,
             stats.totalSuccesses,
+            stats.totalGuaranteedSuccesses,
             stats.totalFailures,
             stats.totalDestructions,
             stats.highestTotalLevel,
@@ -792,6 +799,7 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         returns (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
@@ -810,6 +818,7 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         return (
             stats.totalAttempts,
             stats.totalSuccesses,
+            stats.totalGuaranteedSuccesses,
             stats.totalFailures,
             stats.totalDestructions,
             stats.totalSafeDowngrades,

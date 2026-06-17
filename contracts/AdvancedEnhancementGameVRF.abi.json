@@ -87,6 +87,12 @@
       {
         "indexed": false,
         "internalType": "uint64",
+        "name": "totalGuaranteedSuccesses",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
         "name": "totalFailures",
         "type": "uint64"
       },
@@ -568,6 +574,11 @@
       },
       {
         "internalType": "uint64",
+        "name": "totalGuaranteedSuccesses",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
         "name": "totalFailures",
         "type": "uint64"
       },
@@ -810,6 +821,11 @@
       {
         "internalType": "uint64",
         "name": "totalSuccesses",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "totalGuaranteedSuccesses",
         "type": "uint64"
       },
       {
