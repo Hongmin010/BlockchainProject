@@ -15,10 +15,10 @@ interface IAdvancedEnhancementGame {
         returns (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
-            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -81,6 +81,7 @@ contract EnhancementAchievements is ERC1155, Ownable {
         maxLevel = maxLevel_;
     }
 
+    // User functions for claiming achievements
     function claimMaxEnhancement(uint256 itemId) external {
         _mintMaxEnhancement(msg.sender, itemId);
     }
@@ -101,8 +102,25 @@ contract EnhancementAchievements is ERC1155, Ownable {
         _mintVerticalDrop(msg.sender, itemId);
     }
 
+    // Admin functions for minting achievements directly to users
     function awardMaxEnhancement(address user, uint256 itemId) external onlyOwner {
         _mintMaxEnhancement(user, itemId);
+    }
+
+    function awardSuccessStreak(address user, uint256 itemId) external {
+        _mintSuccessStreak(user, itemId);
+    }
+
+    function awardDestructionSurvivor(address user, uint256 itemId) external {
+        _mintDestructionSurvivor(user, itemId);
+    }
+
+    function awardGuaranteedSafe(address user, uint256 itemId) external {
+        _mintGuaranteedSafe(user, itemId);
+    }
+
+    function awardVerticalDrop(address user, uint256 itemId) external {
+        _mintVerticalDrop(user, itemId);
     }
 
     function setURI(string memory newUri) external onlyOwner {
@@ -314,10 +332,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
-            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -352,10 +370,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
-            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -390,10 +408,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
-            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
@@ -428,10 +446,10 @@ contract EnhancementAchievements is ERC1155, Ownable {
         (
             uint64 totalAttempts,
             uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
             uint64 totalFailures,
             uint64 totalDestructions,
             uint64 totalSafeDowngrades,
-            uint64 totalGuaranteedSuccesses,
             uint8 highestTotalLevel,
             uint8 currentSuccessStreak,
             uint8 maxSuccessStreak,
