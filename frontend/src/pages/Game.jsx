@@ -294,7 +294,14 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
-  const displayItems = userItems;
+  // 목록은 인덱서 DB(fetchUserStats) 기반이라 인덱싱이 밀리면 stale함.
+  // 현재 선택된 고양이는 컨트랙트 직접 조회값(displayLevel)이 있으므로 그 라이브 레벨로 덮어써
+  // 무대/현재 단계와 목록 썸네일 레벨이 어긋나지 않게 한다.
+  const displayItems = userItems.map((it) =>
+    Number(it.itemId) === selectedItemId
+      ? { ...it, level: displayLevel, totalLevel: displayLevel }
+      : it
+  );
 
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
