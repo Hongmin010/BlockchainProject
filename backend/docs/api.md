@@ -353,7 +353,7 @@
 
 ## 업적 NFT
 
-v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(합의 ID 1~5, `achievements` 테이블 기반, 아래 `/:wallet` + `/proof`)과 **구 컨트랙트**(EnhancementAchievements — `holders`, `legacy/:address`, 은퇴 예정).
+v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(오프체인 3~5 + 온체인 6~10, 배포 컨트랙트 EnhancementAchievements `0x7b5a…dd4B` 토큰 ID, `achievements` 테이블 기반, 아래 `/:wallet` + `/proof`)과 **구 레지스트리 RPC 조회**(`holders`, `legacy/:address`, 은퇴 예정).
 
 ### `GET /api/achievements/holders`
 
@@ -377,15 +377,18 @@ v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(합의 ID 1~
 
 ### `GET /api/achievements/:wallet` ★ (v5 신규 업적 시스템)
 
-**온/오프체인 통합 업적 목록.** 합의된 업적 5종 전체에 보유 여부를 붙여 반환한다.
+**온/오프체인 통합 업적 목록.** 업적 8종(오프체인 3~5 + 온체인 6~10) 전체에 보유 여부를 붙여 반환한다. ID 는 배포 컨트랙트(EnhancementAchievements)의 토큰 ID 와 일치.
 
 | ID | 업적 | 판정 | 조건 |
 |---|---|---|---|
-| 1 | 검증자 | 온체인 | 누적 강화 100회 |
-| 2 | 상남자 | 온체인 | Safe 모드 0회로 15강 도달 |
-| 3 | 공식인증 호구 | 오프체인 | 관측 성공률이 Wilson 95% CI 기준 기대치보다 유의하게 낮음 |
+| 3 | 공식인증 호구 | 오프체인(백엔드 판정→민트) | 관측 성공률이 Wilson 95% CI 기준 기대치보다 유의하게 낮음 |
 | 4 | 천운 | 오프체인 | 관측 성공률이 유의하게 높음 |
 | 5 | 다둥이 집사 | 오프체인 | 동시에 10강 이상 고양이 5마리 보유 |
+| 6 | 최고 강화 | 온체인(컨트랙트 자체판정→인덱싱) | 아이템 총강화 레벨 20 도달 |
+| 7 | 연속 성공 | 온체인 | 최대 연속 성공 3회 이상 |
+| 8 | 파괴 생존자 | 온체인 | 20강 도달 + 누적 파괴 5회 이상 |
+| 9 | 보장 성공 | 온체인 | 보장 성공 누적 10회 이상 |
+| 10 | 수직 낙하 | 온체인 | 파괴 시 레벨 하락 폭 10 이상 |
 
 ```json
 {
@@ -404,7 +407,7 @@ v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(합의 ID 1~
 ```
 
 - `unlocked` = NFT 발급 완료(`status: "minted"`). `detected`/`minting`/`failed` 는 감지됐지만 아직 발급 전.
-- 온체인 업적(1, 2)은 컨트랙트가 판정·발급한 것을 인덱싱한 결과, 오프체인 업적(3~5)은 백엔드가 판정 후 mint 한 결과.
+- 온체인 업적(6~10)은 컨트랙트가 판정·발급한 것을 인덱싱한 결과, 오프체인 업적(3~5)은 백엔드가 판정 후 mint 한 결과.
 - 400 `invalid_address`
 
 ### `GET /api/achievements/:wallet/:achievementId/proof` ★ (제3자 재검증)
@@ -430,13 +433,13 @@ v5부터 업적 시스템이 둘로 나뉜다: **신규 시스템**(합의 ID 1~
 ```
 
 - evidence 의미: ID 3/4 → A=성공수, B=시도수 / ID 5 → A=10강 이상 마리수, B=0
-- 400 `invalid_address` / `invalid_achievement_id` (1~5 외)
+- 400 `invalid_address` / `invalid_achievement_id` (3,4,5,6,7,8,9,10 외)
 - 404 `achievement_not_found`: 해당 지갑이 이 업적 미보유
-- 404 `no_offchain_proof`: 온체인 업적(1, 2)은 payload 없음 — 근거는 응답의 `txHash` (AchievementUnlocked 이벤트)
+- 404 `no_offchain_proof`: 온체인 업적(6~10)은 payload 없음 — 근거는 응답의 `txHash` (AchievementClaimed 이벤트)
 
 ### `GET /api/achievements/legacy/:address?itemId=1` (구 시스템 — deprecated)
 
-v4 까지의 구 컨트랙트(EnhancementAchievements, `max_enhancement` 레지스트리) RPC 즉석 조회. **신규 ID 체계(1~5)와 충돌해 `legacy` 경로로 이동**했다 — 구 컨트랙트 은퇴 시 제거 예정. 응답 형태는 기존과 동일:
+v4 까지의 구 컨트랙트(`max_enhancement` 레지스트리) RPC 즉석 조회. **신규 토큰 ID 체계와 충돌해 `legacy` 경로로 이동**했다 — 구 컨트랙트 은퇴 시 제거 예정. 응답 형태는 기존과 동일:
 
 ```json
 {

@@ -11,7 +11,7 @@
  *  모드
  *  ----
  *  - MOCK_MINT=true : 실호출 대신 결정적 가짜 tx_hash 로 전 흐름 검증.
- *    (컨트랙트 미배포 단계의 기본 운용 모드)
+ *    (minter 지갑 key 도착 전 기본 운용 모드)
  *  - 실모드: .env 의 PRIVATE_KEY(서버 지갑) + ACHIEVEMENTS_NFT_ADDRESS + RPC_URL.
  *    ⚠️ PRIVATE_KEY 는 절대 로그/응답에 노출하지 않는다.
  *

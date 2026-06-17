@@ -114,7 +114,7 @@ backend/
 
 → 엔드포인트: `GET /api/merkle/proof?user=<addr>&itemId=<n>&type=<n>` (미등록 조합은 404)
 
-## 처리하는 이벤트 (컨트랙트 2개 · 총 6개)
+## 처리하는 이벤트 (컨트랙트 3개 · 총 8개)
 
 자세한 시그니처와 자료형 근거는 [docs/events.md](docs/events.md), 통합 결정 근거는 [docs/design_decisions.md](docs/design_decisions.md) 참고.
 
@@ -126,22 +126,25 @@ backend/
 | 4 | 고급 | `AdvancedEnhancementRequested` | 고급강화 요청 | `advanced_attempts` UPSERT (pending) |
 | 5 | 고급 | `AdvancedEnhancementResult` | 고급강화 결과 (5종) | `advanced_attempts` UPSERT + `user_items` 갱신 (★ 한 트랜잭션) |
 | 6 | 고급 | `AdvancedRateUpdated` | 고급강화 확률 변경 | `advanced_rate_history` INSERT |
+| 7 | 업적 | `AchievementMinted` | 오프체인 업적(3·4·5) 백엔드 민트 | `achievements` INSERT (offchain/minted, dataHash) |
+| 8 | 업적 | `AchievementClaimed` | 온체인 업적(6~10) 컨트랙트 자체판정 | `achievements` INSERT (onchain/minted, itemId) |
 
 > ★ **`user_items` 는 별도 이벤트 없이 백엔드가 자동 갱신한다.**
 > 기본 강화의 `EnhancementCompleted` 와 고급강화의 `AdvancedEnhancementResult` 핸들러가
 > 각자 attempts 갱신과 같은 DB 트랜잭션 안에서 `user_items` UPSERT 를 함께 수행한다.
-> 구 업적 NFT(`EnhancementAchievements`)는 인덱싱하지 않는다 — `/api/achievements/legacy/:address` 가 RPC 로 즉석 조회.
+> 업적 이벤트(7·8)는 `ACHIEVEMENTS_NFT_ADDRESS` 설정 시에만 구독한다(미설정이면 자동 제외).
+> 구 레지스트리 RPC 조회는 `/api/achievements/legacy/:address` 가 담당(인덱싱 아님).
 
-## 업적 시스템 v5 (컨트랙트 선행 개발 — mock 기반)
+## 업적 시스템 v5 (배포 컨트랙트 EnhancementAchievements 연동)
 
-신규 업적 NFT 컨트랙트(팀원 병렬 개발 중)와 **인터페이스만 합의**하고 백엔드 전 구간을 먼저 완성했다. 실제 ABI 도착 시 `abi/achievements.fragment.json` 교체 + `.env` 에 `ACHIEVEMENTS_NFT_ADDRESS` 추가 + `MOCK_MINT=false` 만 하면 연결된다.
+배포 컨트랙트(`0x7b5a6404bda67B085aA40aEFbfe72AB9BD28dd4B`, Base Sepolia)의 토큰 ID 체계에 맞춰 백엔드를 연동했다. 실제 민트는 minter 지갑 private key + 토큰 메타데이터 준비 후 `.env` 에 `ACHIEVEMENTS_NFT_ADDRESS`·`RPC_URL`·`PRIVATE_KEY` 추가 + `MOCK_MINT=false` 로 전환한다.
 
-**판정 위치 경계** — ID 1(검증자)·2(상남자)는 **컨트랙트가 판정**·`AchievementUnlocked` emit → 인덱서는 기록만(재판정 금지). ID 3(공식인증 호구)·4(천운)·5(다둥이 집사)는 **백엔드가 판정**(`lib/achievementJudge.js`, Wilson 95% CI 재사용) → 근거 payload 의 keccak256 해시를 `mintAchievement(to, id, dataHash)` 로 온체인 커밋 → 제3자가 `/proof` API 로 재검증 가능.
+**판정 위치 경계** — ID 3(공식인증 호구)·4(천운)·5(다둥이 집사)는 컨트랙트가 on-chain 으로 못 하는 통계 판정이라 **백엔드가 판정**(`lib/achievementJudge.js`, Wilson 95% CI 재사용) → 근거 payload 의 keccak256 해시를 `mintAchievement(user, tokenId, dataHash)` 로 발급(`AchievementMinted`) → 제3자가 `/proof` API 로 재검증 가능. ID 6~10(최고강화·연속성공·파괴생존·보장·수직낙하)은 **컨트랙트가 `getAchievementStats` 로 자체 판정**(`claim*`/`award*` → `AchievementClaimed`) → 인덱서는 기록만(재판정 금지).
 
-- 해시 스펙(컨트랙트와 바이트 일치 필수): [docs/hash-test-vector.md](docs/hash-test-vector.md) — 컨트랙트팀 Remix 검증용 테스트 벡터
+- dataHash 규약: [docs/hash-test-vector.md](docs/hash-test-vector.md) — 컨트랙트는 dataHash 를 검증 없이 박제만 하므로, 이 인코딩은 백엔드↔제3자 재검증용 자체 규약이다(컨트랙트와 바이트 일치 불요).
 - 판정 훅: 인덱서 `EnhancementResult` 처리 직후 해당 유저만 검사 (전체 스캔 없음, 표본 30회 미만 운 판정 스킵)
-- mint: `MOCK_MINT=true` 면 가짜 tx_hash 로 전 흐름 검증 (현재 기본 운용 모드). 상태 전이 `detected → minting → minted/failed(재시도 가능)`
-- 중복 발급 차단: `achievements` 테이블 `UNIQUE(wallet, achievement_id)`
+- mint: `MOCK_MINT=true` 면 가짜 tx_hash 로 전 흐름 검증 (minter key 도착 전 기본 운용 모드). 상태 전이 `detected → minting → minted/failed(재시도 가능)`
+- 중복 발급 차단: `achievements` 테이블 `UNIQUE(wallet, achievement_id)` + 컨트랙트 `claimed[user][tokenId]`
 
 ## API 엔드포인트 요약
 
@@ -167,7 +170,7 @@ base URL — 배포 **`https://khu-blockchain-api.onrender.com`**, 로컬 `http:
 | `GET /api/advanced/rates/history` `[?mode=<0\|1>&extraLevel=<n>]` ★ | 고급강화 확률표 변경 이력 | Dashboard |
 | `GET /api/ranking?limit=<n>` | 랭킹 3종 (최고 아이템 / 도전왕 / 성공왕) | Ranking |
 | `GET /api/achievements/holders` | 업적 NFT 보유자 목록 (구 컨트랙트, 온체인 즉석 조회) | Ranking |
-| `GET /api/achievements/:wallet` ★ | 온/오프체인 통합 업적 목록 (v5 신규 시스템, ID 1~5) | Records / 업적 |
+| `GET /api/achievements/:wallet` ★ | 온/오프체인 통합 업적 목록 (v5 신규 시스템, ID 3~10) | Records / 업적 |
 | `GET /api/achievements/:wallet/:achievementId/proof` ★ | 오프체인 업적 판정 근거 공개 (payload + dataHash, 제3자 재검증) | Verify / 업적 |
 | `GET /api/achievements/legacy/:address` `[?itemId=<n>]` | (deprecated) 구 컨트랙트 발급 여부 + 클레임 가능 여부 | Records / Game |
 

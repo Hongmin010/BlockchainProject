@@ -8,8 +8,10 @@
  *  제3자는 /api/achievements/:wallet/:achievementId/proof 로 payload 원본을
  *  받아 이 모듈과 동일한 방식으로 해시를 재계산 → 온체인 dataHash 와 대조한다.
  *
- *  인코딩 스펙 (컨트랙트와 바이트 단위 일치 필수)
+ *  인코딩 스펙 (백엔드↔제3자 재검증용 자체 규약)
  *  ----------------------------------------------
+ *  배포 컨트랙트는 dataHash 를 검증 없이 박제만 하므로 컨트랙트와 바이트 일치는
+ *  불요하다. 단, /proof 재검증이 성립하려면 이 인코딩이 한 곳에 고정돼야 한다.
  *  keccak256( AbiCoder.defaultAbiCoder().encode(타입배열, 값배열) )
  *   - Solidity 쪽 재현: keccak256(abi.encode(wallet, achievementId,
  *     evidenceA, evidenceB, fromBlock, toBlock))

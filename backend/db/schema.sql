@@ -325,17 +325,17 @@ CREATE INDEX IF NOT EXISTS idx_adv_rate_history_mode_level_block
 
 
 -- ============================================================
---  v5 — 업적 NFT 시스템 (컨트랙트 선행 개발, mock 기반)
+--  v5 — 업적 NFT 시스템 (배포 컨트랙트 EnhancementAchievements 연동)
 --  (기존 DB 는 db/migrations/003_achievements.sql 로 적용)
 -- ============================================================
 
 -- ------------------------------------------------------------
 --  achievements : 업적 발급 상태 (온체인 인덱싱 + 오프체인 판정 통합)
 -- ------------------------------------------------------------
---  ID 1, 2 (onchain) : 컨트랙트가 판정 → AchievementUnlocked 인덱싱으로 INSERT.
---                      payload/data_hash 없음, status 는 바로 'minted'.
---  ID 3~5 (offchain) : 백엔드 판정 → 'detected' INSERT → mint 호출
---                      'minting' → 'minted'(tx_hash 저장) / 'failed'(에러 보관, 재시도 가능).
+--  ID 6~10 (onchain) : 컨트랙트가 getAchievementStats 로 판정 → AchievementClaimed
+--                      인덱싱으로 INSERT. payload/data_hash 없음, status 바로 'minted'.
+--  ID 3~5  (offchain): 백엔드 판정 → 'detected' INSERT → mintAchievement 호출 →
+--                      AchievementMinted. 'minting' → 'minted'(tx_hash) / 'failed'(재시도).
 --  UNIQUE(wallet, achievement_id) ← 중복 발급 원천 차단 (멱등 INSERT ON CONFLICT DO NOTHING).
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS achievements (
@@ -344,14 +344,14 @@ CREATE TABLE IF NOT EXISTS achievements (
   -- 업적 획득 지갑 (lowercase 정규화)
   wallet                   VARCHAR(42)   NOT NULL,
 
-  -- 업적 ID (constants/achievements.js 와 동일, 컨트랙트팀 합의 1~5)
+  -- 업적 ID (constants/achievements.js 와 동일 — 오프체인 3~5 / 온체인 6~10, 컨트랙트 토큰 ID)
   achievement_id           SMALLINT      NOT NULL,
 
   -- 판정 위치: 'onchain'(인덱싱만) | 'offchain'(백엔드 판정 + mint 호출)
   source                   VARCHAR(10)   NOT NULL
                            CHECK (source IN ('onchain', 'offchain')),
 
-  -- AchievementUnlocked 의 itemId (온체인 업적만, 상남자=어느 아이템인지)
+  -- AchievementClaimed 의 itemId (온체인 업적만, 어느 아이템에서 달성했는지)
   item_id                  NUMERIC(78,0),
 
   -- 판정 근거 원본 (오프체인만) — lib/achievementHash.buildPayload 결과 그대로
@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS achievements (
   -- keccak256(abi.encode(payload)) — 컨트랙트 mintAchievement 에 커밋한 값 (오프체인만)
   data_hash                VARCHAR(66),
 
-  -- mint 트랜잭션 해시 (온체인 업적은 Unlocked 이벤트 tx)
+  -- mint 트랜잭션 해시 (온체인 업적은 Claimed 이벤트 tx)
   tx_hash                  VARCHAR(66),
   log_index                INTEGER,
   block_number             BIGINT,
