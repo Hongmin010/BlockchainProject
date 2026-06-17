@@ -107,19 +107,19 @@ contract EnhancementAchievements is ERC1155, Ownable {
         _mintMaxEnhancement(user, itemId);
     }
 
-    function awardSuccessStreak(address user, uint256 itemId) external {
+    function awardSuccessStreak(address user, uint256 itemId) external onlyOwner {
         _mintSuccessStreak(user, itemId);
     }
 
-    function awardDestructionSurvivor(address user, uint256 itemId) external {
+    function awardDestructionSurvivor(address user, uint256 itemId) external onlyOwner {
         _mintDestructionSurvivor(user, itemId);
     }
 
-    function awardGuaranteedSafe(address user, uint256 itemId) external {
+    function awardGuaranteedSafe(address user, uint256 itemId) external onlyOwner {
         _mintGuaranteedSafe(user, itemId);
     }
 
-    function awardVerticalDrop(address user, uint256 itemId) external {
+    function awardVerticalDrop(address user, uint256 itemId) external onlyOwner {
         _mintVerticalDrop(user, itemId);
     }
 

@@ -13,7 +13,7 @@ if (!process.env.PRIVATE_KEY) {
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const CONTRACTS_DIR = resolve(SCRIPT_DIR, "../..");
 
-const DEFAULT_CONTRACT_ADDRESS = "0xd8cbed31bae06ff61dc01abff4b7f57921ddc15d";
+const DEFAULT_CONTRACT_ADDRESS = "0x88dbfaae7134ef18d2025ae6c5db433dea474838";
 const BASE_PROOF_ENHANCEMENT_TYPE = 0;
 const RESULT_TYPES = [
   "FailKeep",
@@ -34,7 +34,11 @@ const contractAddress =
   process.env.ADVANCED_CONTRACT_ADDRESS ??
   process.env.CONTRACT_ADDRESS ??
   DEFAULT_CONTRACT_ADDRESS;
-const itemId = BigInt(process.env.ITEM_ID ?? "71");
+const singleItemId = process.env.ITEM_ID ? BigInt(process.env.ITEM_ID) : null;
+const startItemId = process.env.START_ITEM_ID
+  ? BigInt(process.env.START_ITEM_ID)
+  : 1n;
+const endItemId = process.env.END_ITEM_ID ? BigInt(process.env.END_ITEM_ID) : null;
 const preferredMode = Number(process.env.MODE ?? "0"); // 0 = Safe, 1 = Risky
 const targetTotalLevel = BigInt(process.env.TARGET_TOTAL_LEVEL ?? "10");
 const maxTxs = process.env.MAX_TXS ? Number(process.env.MAX_TXS) : Infinity;
@@ -61,25 +65,38 @@ function sameAddress(a, b) {
   return a?.toLowerCase() === b?.toLowerCase();
 }
 
-function getProof() {
+function getClaims() {
   if (!existsSync(proofListPath)) {
     throw new Error(`Proof list not found: ${proofListPath}`);
   }
 
-  const claim = proofList.claims?.find(
-    (entry) =>
-      sameAddress(entry.user, wallet.address) &&
-      BigInt(entry.itemId) === itemId &&
-      Number(entry.enhancementType) === BASE_PROOF_ENHANCEMENT_TYPE,
-  );
+  const claims = (proofList.claims ?? [])
+    .filter((entry) => sameAddress(entry.user, wallet.address))
+    .filter(
+      (entry) =>
+        Number(entry.enhancementType) === BASE_PROOF_ENHANCEMENT_TYPE,
+    )
+    .filter((entry) => {
+      const entryItemId = BigInt(entry.itemId);
 
-  if (!claim) {
+      if (singleItemId !== null) {
+        return entryItemId === singleItemId;
+      }
+
+      return (
+        entryItemId >= startItemId &&
+        (endItemId === null || entryItemId <= endItemId)
+      );
+    })
+    .sort((a, b) => Number(BigInt(a.itemId) - BigInt(b.itemId)));
+
+  if (claims.length === 0) {
     throw new Error(
-      `No Merkle proof found for ${wallet.address}, item ${itemId}, enhancementType ${BASE_PROOF_ENHANCEMENT_TYPE}`,
+      `No Merkle proof claims found for ${wallet.address}, enhancementType ${BASE_PROOF_ENHANCEMENT_TYPE}`,
     );
   }
 
-  return claim.proof;
+  return claims;
 }
 
 function parseLog(receipt, eventName) {
@@ -128,7 +145,26 @@ async function sendAndWait(transactionPromise) {
   }
 }
 
-async function waitUntilNoPending() {
+async function assertAdvancedRequestCanRun(itemId, mode, proof) {
+  try {
+    await contract.requestAdvancedEnhancementWithProof.staticCall(
+      itemId,
+      mode,
+      proof,
+    );
+  } catch (error) {
+    const reason =
+      error?.reason ??
+      error?.revert?.args?.[0] ??
+      error?.shortMessage ??
+      error?.message ??
+      "unknown revert";
+
+    throw new Error(`item ${itemId}: advanced request would revert: ${reason}`);
+  }
+}
+
+async function waitUntilNoPending(itemId) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -141,7 +177,9 @@ async function waitUntilNoPending() {
       return true;
     }
 
-    console.log(`waiting pending advanced attempt ${pendingAttemptId}`);
+    console.log(
+      `item ${itemId}: waiting pending advanced attempt ${pendingAttemptId}`,
+    );
     await sleep(pollMs);
   }
 
@@ -187,84 +225,129 @@ console.log("network: Base Sepolia");
 console.log("contract:", contractAddress);
 console.log("proof list:", proofListPath);
 console.log("caller:", wallet.address);
-console.log("itemId:", itemId.toString());
+console.log(
+  "item range:",
+  singleItemId !== null
+    ? singleItemId.toString()
+    : `${startItemId}${endItemId === null ? "+" : `-${endItemId}`}`,
+);
 console.log("preferred mode:", formatMode(preferredMode));
 console.log("target total level:", targetTotalLevel.toString());
 console.log("max txs:", Number.isFinite(maxTxs) ? maxTxs : "unlimited");
 
-const proof = getProof();
+const claims = getClaims();
+console.log("claims:", claims.length);
+
 let sentTxs = 0;
 
-while (sentTxs < maxTxs) {
-  const pendingAttemptId = await contract.getPendingAttemptId(
-    wallet.address,
-    itemId,
-  );
+for (const claim of claims) {
+  if (sentTxs >= maxTxs) {
+    console.log(`MAX_TXS reached: ${sentTxs}`);
+    break;
+  }
 
-  if (pendingAttemptId !== 0n) {
-    const cleared = await waitUntilNoPending();
-    if (!cleared) {
-      throw new Error(`Timed out waiting for pending attempt ${pendingAttemptId}`);
+  const itemId = BigInt(claim.itemId);
+  const proof = claim.proof;
+
+  while (sentTxs < maxTxs) {
+    const pendingAttemptId = await contract.getPendingAttemptId(
+      wallet.address,
+      itemId,
+    );
+
+    if (pendingAttemptId !== 0n) {
+      const cleared = await waitUntilNoPending(itemId);
+      if (!cleared) {
+        throw new Error(
+          `Timed out waiting for item ${itemId} pending attempt ${pendingAttemptId}`,
+        );
+      }
     }
+
+    const totalLevel = await contract.getTotalLevel(wallet.address, itemId);
+    const extraLevel = await contract.getAdvancedExtraLevel(
+      wallet.address,
+      itemId,
+    );
+    const safeDropStreak = await contract.getSafeDropStreak(
+      wallet.address,
+      itemId,
+    );
+    const riskyBlocked = await contract.isRiskyEnhancementBlocked(
+      wallet.address,
+      itemId,
+    );
+
+    console.log(
+      `item ${itemId}: total=${totalLevel}, extra=${extraLevel}, safeDropStreak=${safeDropStreak}`,
+    );
+
+    if (totalLevel < 5n) {
+      console.log(
+        `item ${itemId}: base level is below 5, moving next`,
+      );
+      break;
+    }
+
+    if (totalLevel >= targetTotalLevel) {
+      console.log(`item ${itemId}: target total level reached, moving next`);
+      break;
+    }
+
+    let mode = preferredMode;
+
+    if (mode === 1 && riskyBlocked) {
+      mode = 0;
+      console.log(
+        `item ${itemId}: risky blocked by safe guarantee streak, switching to Safe`,
+      );
+    }
+
+    await assertAdvancedRequestCanRun(itemId, mode, proof);
+
+    sentTxs++;
+    console.log(
+      `item ${itemId}: sending advanced enhancement #${sentTxs} (${formatMode(mode)})`,
+    );
+
+    const receipt = await sendAndWait(
+      contract.requestAdvancedEnhancementWithProof(itemId, mode, proof),
+    );
+
+    console.log(`item ${itemId}: confirmed block ${receipt.blockNumber}`);
+
+    const requestedEvent = parseLog(receipt, "AdvancedEnhancementRequested");
+
+    if (!requestedEvent) {
+      console.log(
+        `item ${itemId}: request event not found, waiting until pending clears`,
+      );
+      await waitUntilNoPending(itemId);
+      continue;
+    }
+
+    const attemptId = requestedEvent.args.attemptId;
+    const guaranteed = requestedEvent.args.guaranteed;
+
+    console.log(`item ${itemId}: attemptId ${attemptId}, guaranteed ${guaranteed}`);
+
+    const resultEvent = guaranteed
+      ? parseLog(receipt, "AdvancedEnhancementResult")
+      : await waitForResult(attemptId, receipt.blockNumber);
+
+    if (!resultEvent) {
+      const latestTotalLevel = await contract.getTotalLevel(
+        wallet.address,
+        itemId,
+      );
+      console.log(
+        `item ${itemId}: result not found yet, latest total level ${latestTotalLevel}`,
+      );
+      break;
+    }
+
+    printResult(resultEvent.args);
   }
-
-  const totalLevel = await contract.getTotalLevel(wallet.address, itemId);
-  const extraLevel = await contract.getAdvancedExtraLevel(wallet.address, itemId);
-  const safeDropStreak = await contract.getSafeDropStreak(wallet.address, itemId);
-  const riskyBlocked = await contract.isRiskyEnhancementBlocked(
-    wallet.address,
-    itemId,
-  );
-
-  console.log(
-    `state: total=${totalLevel}, extra=${extraLevel}, safeDropStreak=${safeDropStreak}`,
-  );
-
-  if (totalLevel >= targetTotalLevel) {
-    console.log("target total level reached");
-    break;
-  }
-
-  let mode = preferredMode;
-
-  if (mode === 1 && riskyBlocked) {
-    mode = 0;
-    console.log("risky blocked by safe guarantee streak, switching to Safe");
-  }
-
-  sentTxs++;
-  console.log(`sending advanced enhancement #${sentTxs} (${formatMode(mode)})`);
-
-  const receipt = await sendAndWait(
-    contract.requestAdvancedEnhancementWithProof(itemId, mode, proof),
-  );
-
-  console.log(`confirmed block: ${receipt.blockNumber}`);
-
-  const requestedEvent = parseLog(receipt, "AdvancedEnhancementRequested");
-
-  if (!requestedEvent) {
-    console.log("request event not found, waiting until pending clears");
-    await waitUntilNoPending();
-    continue;
-  }
-
-  const attemptId = requestedEvent.args.attemptId;
-  const guaranteed = requestedEvent.args.guaranteed;
-
-  console.log(`attemptId: ${attemptId}, guaranteed: ${guaranteed}`);
-
-  const resultEvent = guaranteed
-    ? parseLog(receipt, "AdvancedEnhancementResult")
-    : await waitForResult(attemptId, receipt.blockNumber);
-
-  if (!resultEvent) {
-    const latestTotalLevel = await contract.getTotalLevel(wallet.address, itemId);
-    console.log(`result not found yet, latest total level: ${latestTotalLevel}`);
-    break;
-  }
-
-  printResult(resultEvent.args);
 }
 
 console.log(`done. sent txs: ${sentTxs}`);
