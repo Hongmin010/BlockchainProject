@@ -6,6 +6,11 @@
   "scripts": {
     "compile": "hardhat compile",
     "deploy:base-sepolia": "hardhat ignition deploy ./ignition/modules/EnhancementGameVRF.ts --network baseSepolia --parameters ./ignition/parameters/baseSepolia.json --reset",
+    "deploy:achievements:base-sepolia": "hardhat run ./scripts/deploy/deployAchievements.js --network baseSepolia",
+    "claim:achievement": "node ./scripts/achievement/claimMaxAchievement.js",
+    "claim:achievement:streak": "node ./scripts/achievement/claimSuccessStreakAchievement.js",
+    "mint:achievement": "node ./scripts/achievement/mintAchievement.js",
+    "hash:achievement-vector": "node ./scripts/printHashTestVector.js",
     "address:base-sepolia": "node ./scripts/print-deployed-address.js",
     "request:base-sepolia": "hardhat run ./scripts/request-enhancement.ts --network baseSepolia",
     "status:base-sepolia": "hardhat run ./scripts/check-status.ts --network baseSepolia",

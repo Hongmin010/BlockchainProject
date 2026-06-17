@@ -1,0 +1,32 @@
+{
+  "name": "CatForge: Vertical Drop",
+  "description": "Awarded to a player whose item lost at least ten enhancement levels in a single destruction.",
+  "image": "ipfs://IMAGE_CID/vertical-drop.png",
+  "external_url": "https://catforge.example.com",
+  "attributes": [
+    {
+      "trait_type": "Achievement",
+      "value": "Vertical Drop"
+    },
+    {
+      "trait_type": "Achievement Type",
+      "value": "Catastrophic Destruction"
+    },
+    {
+      "trait_type": "Single Destruction Level Loss",
+      "value": 10
+    },
+    {
+      "trait_type": "Requirement",
+      "value": "Lose at least 10 levels from one destruction"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Mythic"
+    },
+    {
+      "trait_type": "Transferability",
+      "value": "Soulbound"
+    }
+  ]
+}

@@ -2,6 +2,19 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 5px;
+}
+
+/* 단계가 많을 때(상급 15칸) — 작은 칩 + 줄바꿈 */
+.stagesCompact {
+  gap: 4px;
+}
+.stagesCompact .pip {
+  width: 21px;
+  height: 21px;
+  font-size: 10px;
+  border-radius: 6px;
 }
 
 .pip {

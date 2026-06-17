@@ -1,7 +1,8 @@
 {
   "EnhancementAchievementsModule": {
-    "advancedGameAddress": "0x4f1c8573446efc5ae48eb453cfc66fafe26c2f5c",
-    "metadataUri": "https://example.com/metadata/achievements/{id}.json",
-    "maxLevel": 10
+    "advancedGameAddress": "0x88dbfaae7134ef18d2025ae6c5db433dea474838",
+    "metadataUri": "ipfs://bafybeieym2spkmes5fkqv4gxg4vtuonobw5iqmqy5sw66fak7mhe7en23m/{id}.json",
+    "maxLevel": 20,
+    "backendMinter": "0x78D5B8Aa83bAE9b0b45B2B71E64102Ea187ADDE9"
   }
 }
