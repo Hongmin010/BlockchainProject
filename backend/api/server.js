@@ -76,7 +76,7 @@ const {
 } = require('../utils/advancedVerify');
 const merkle = require('../utils/merkle');
 const { createAchievementsClient, ACHIEVEMENTS } = require('../utils/achievements');
-// v5: 신규 업적 시스템 (컨트랙트팀 합의 ID 1~5, achievements 테이블 기반)
+// v5: 신규 업적 시스템 (오프체인 3~5 + 온체인 6~10, achievements 테이블 기반)
 const { ACHIEVEMENT_META, ACHIEVEMENT_PAYLOAD_TYPES } = require('../constants/achievements');
 
 const app = express();
@@ -977,7 +977,7 @@ app.get('/api/achievements/:wallet/:achievementId/proof', async (req, res, next)
   }
   const achievementId = Number(req.params.achievementId);
   if (!Number.isInteger(achievementId) || !ACHIEVEMENT_META[achievementId]) {
-    return res.status(400).json({ error: 'invalid_achievement_id', message: 'achievementId must be 1~5' });
+    return res.status(400).json({ error: 'invalid_achievement_id', message: 'achievementId must be one of 3,4,5 (offchain) or 6,7,8,9,10 (onchain)' });
   }
   try {
     const { rows } = await db.query(`
@@ -991,10 +991,10 @@ app.get('/api/achievements/:wallet/:achievementId/proof', async (req, res, next)
     }
     const row = rows[0];
     if (row.source === 'onchain') {
-      // 온체인 판정 업적의 근거는 AchievementUnlocked 이벤트 자체 — payload 없음
+      // 온체인 판정 업적(6~10)의 근거는 AchievementClaimed 이벤트 자체 — payload 없음
       return res.status(404).json({
         error: 'no_offchain_proof',
-        message: '온체인 판정 업적(1, 2)은 컨트랙트가 직접 판정한다 — 근거는 txHash 의 AchievementUnlocked 이벤트',
+        message: '온체인 판정 업적(6~10)은 컨트랙트가 getAchievementStats 로 직접 판정한다 — 근거는 txHash 의 AchievementClaimed 이벤트',
         txHash: row.tx_hash,
       });
     }
@@ -1026,10 +1026,10 @@ app.get('/api/achievements/:wallet/:achievementId/proof', async (req, res, next)
  * GET /api/achievements/:wallet   ★ 온/오프체인 통합 업적 목록 (v5 신규 시스템)
  *
  *  achievements 테이블(온체인 인덱싱 + 오프체인 판정 통합)을 기반으로
- *  합의된 업적 5종 전체에 보유 여부를 붙여 반환한다.
+ *  업적 8종 전체(오프체인 3·4·5 + 온체인 6~10)에 보유 여부를 붙여 반환한다.
  *
- *  ⚠️ v4 까지의 구 컨트랙트(EnhancementAchievements) RPC 즉석 조회는
- *     /api/achievements/legacy/:address 로 이동 (구 ID 체계와 신규 ID 1~5 가
+ *  ⚠️ 구 컨트랙트 RPC 즉석 조회(레지스트리 기반)는
+ *     /api/achievements/legacy/:address 로 이동 (구 ID 체계와 신규 토큰 ID 가
  *     충돌하므로 같은 경로에 공존 불가).
  *
  *  반환

@@ -1,12 +1,24 @@
 [
   {
     "type": "event",
-    "name": "AchievementUnlocked",
+    "name": "AchievementMinted",
+    "anonymous": false,
+    "inputs": [
+      { "name": "user", "type": "address", "indexed": true },
+      { "name": "tokenId", "type": "uint256", "indexed": true },
+      { "name": "dataHash", "type": "bytes32", "indexed": true },
+      { "name": "minter", "type": "address", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "AchievementClaimed",
     "anonymous": false,
     "inputs": [
       { "name": "user", "type": "address", "indexed": true },
       { "name": "achievementId", "type": "uint256", "indexed": true },
-      { "name": "itemId", "type": "uint256", "indexed": false }
+      { "name": "itemId", "type": "uint256", "indexed": true },
+      { "name": "totalLevel", "type": "uint8", "indexed": false }
     ]
   },
   {
@@ -14,8 +26,8 @@
     "name": "mintAchievement",
     "stateMutability": "nonpayable",
     "inputs": [
-      { "name": "to", "type": "address" },
-      { "name": "achievementId", "type": "uint256" },
+      { "name": "user", "type": "address" },
+      { "name": "tokenId", "type": "uint256" },
       { "name": "dataHash", "type": "bytes32" }
     ],
     "outputs": []

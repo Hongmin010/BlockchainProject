@@ -86,8 +86,8 @@ const BASE_ABI = baseAbiJson.abi || baseAbiJson;
 const advAbiJson = require('../abi/AdvancedEnhancementGameVRF.json');
 const ADV_ABI = advAbiJson.abi || advAbiJson;
 
-// v5: 업적 NFT 컨트랙트 — 아직 미배포. 합의된 인터페이스 fragment 로 선행 개발,
-//     실제 ABI 도착 시 abi/achievements.fragment.json 만 교체하면 된다.
+// v5: 업적 NFT 컨트랙트(EnhancementAchievements, 0x7b5a…dd4B) 이벤트 fragment.
+//     AchievementMinted(백엔드 오프체인 민트) + AchievementClaimed(컨트랙트 자체판정).
 const ACHIEVEMENTS_ABI = require('../abi/achievements.fragment.json');
 const { checkOffchainAchievements } = require('../lib/achievementJudge');
 const { mintDetected } = require('../lib/achievementMint');
@@ -99,7 +99,7 @@ const RPC_URL = process.env.RPC_URL;
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 // v4: 고급강화 컨트랙트 주소 (미설정 시 base 만 구독 — 하위호환)
 const ADVANCED_CONTRACT_ADDRESS = process.env.ADVANCED_CONTRACT_ADDRESS;
-// v5: 업적 NFT 컨트랙트 주소 (미배포 — 미설정 시 업적 이벤트 구독 자동 제외)
+// v5: 업적 NFT 컨트랙트 주소 (미설정 시 업적 이벤트 구독 자동 제외 — 하위호환)
 const ACHIEVEMENTS_NFT_ADDRESS = process.env.ACHIEVEMENTS_NFT_ADDRESS;
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 12_000);
 const BATCH_SIZE = Number(process.env.BATCH_SIZE || 1_000);
@@ -136,9 +136,12 @@ const ADVANCED_HANDLERS = {
   AdvancedRateUpdated: handleAdvancedRateUpdated,
 };
 
-// v5: 업적 NFT 컨트랙트 이벤트 핸들러 (온체인 판정 업적 ID 1, 2)
+// v5: 업적 NFT 컨트랙트 이벤트 핸들러
+//   AchievementMinted   → 오프체인 업적(3·4·5) 백엔드 민트 박제 (dataHash 포함)
+//   AchievementClaimed  → 온체인 업적(6~10) 컨트랙트 자체판정 발급 박제
 const ACHIEVEMENT_HANDLERS = {
-  AchievementUnlocked: handleAchievementUnlocked,
+  AchievementMinted: handleAchievementMinted,
+  AchievementClaimed: handleAchievementClaimed,
 };
 
 
@@ -395,14 +398,37 @@ async function handleEnhancementResult(args, meta) {
 
 
 /**
- * (v5) AchievementUnlocked → achievements INSERT (온체인 판정 업적 ID 1, 2)
+ * (v5) AchievementMinted → achievements 박제 (오프체인 업적 3·4·5 — 백엔드가 mintAchievement 로 발급)
  *
- *  args: { user, achievementId, itemId }
- *  판정 경계: 컨트랙트가 이미 판정·발급까지 끝낸 이벤트다 — 백엔드 재판정 금지,
- *  기록만 한다. NFT 가 이미 발급됐으므로 status 는 바로 'minted'.
+ *  args: { user, tokenId, dataHash, minter }
+ *  대부분 백엔드 오프체인 민트 tx 가 emit 한 것 → 이미 'minted' 행이 존재하므로
+ *  ON CONFLICT DO NOTHING 으로 백엔드가 채운 payload/data_hash 를 보존한다.
+ *  (외부에서 직접 민트한 경우에만 이 INSERT 가 실제로 행을 만든다.)
+ */
+async function handleAchievementMinted(args, meta) {
+  await db.query(`
+    INSERT INTO achievements
+      (wallet, achievement_id, source, data_hash,
+       tx_hash, log_index, block_number, status, minted_at)
+    VALUES ($1, $2, 'offchain', $3, $4, $5, $6, 'minted', $7)
+    ON CONFLICT (wallet, achievement_id) DO NOTHING
+  `, [
+    args.user.toLowerCase(),
+    Number(args.tokenId),
+    args.dataHash,
+    meta.txHash, meta.logIndex, meta.blockNumber, meta.blockTimestamp,
+  ]);
+}
+
+/**
+ * (v5) AchievementClaimed → achievements 박제 (온체인 업적 6~10 — 컨트랙트 자체판정)
+ *
+ *  args: { user, achievementId, itemId, totalLevel }
+ *  판정 경계: 컨트랙트가 getAchievementStats 로 판정·발급까지 끝낸 이벤트 —
+ *  백엔드 재판정 금지, 기록만 한다. NFT 가 이미 발급됐으므로 status='minted'.
  *  멱등성: UNIQUE(wallet, achievement_id) + ON CONFLICT DO NOTHING (재인덱싱 안전).
  */
-async function handleAchievementUnlocked(args, meta) {
+async function handleAchievementClaimed(args, meta) {
   await db.query(`
     INSERT INTO achievements
       (wallet, achievement_id, source, item_id,
