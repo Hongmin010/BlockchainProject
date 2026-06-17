@@ -5,14 +5,14 @@ import {
   USE_MOCK_ACHIEVEMENTS,
   MOCK_ACHIEVEMENTS,
   ACHIEVEMENT_DISPLAY,
-  RARITY_LABEL,
   STATUS_LABEL,
 } from './Achievements/constants';
 import styles from './Achievements.module.css';
 
 /**
- * 업적 박물관 페이지 — 신규 v5 업적 5종을 획득/미획득으로 나눠 모아 보여준다.
- * 백엔드 미배포 동안은 MOCK 데이터(constants.USE_MOCK_ACHIEVEMENTS)로 렌더.
+ * 업적 박물관 페이지 — 백엔드 업적 목록(ID 3~10)을 획득/미획득으로 나눠 모아 보여준다.
+ * 목록/이름/조건은 API 응답을 그대로 렌더하고, 아이콘·등급만 constants로 매핑한다.
+ * (constants.USE_MOCK_ACHIEVEMENTS = true 면 MOCK 데이터로 렌더)
  */
 export default function Achievements({ address, onConnect }) {
   const [achievements, setAchievements] = useState(
@@ -108,14 +108,10 @@ export default function Achievements({ address, onConnect }) {
 }
 
 function AchievementCard({ ach, locked = false }) {
-  const display = ACHIEVEMENT_DISPLAY[ach.achievementId] ?? { icon: '🏆', rarity: 'Epic' };
-  const rarityClass = styles[`rarity${display.rarity}`] ?? '';
+  const display = ACHIEVEMENT_DISPLAY[ach.achievementId] ?? { icon: '🏆' };
 
   return (
     <div className={`${styles.card} ${locked ? styles.cardLocked : ''}`}>
-      <span className={`${styles.rarity} ${rarityClass}`}>
-        {RARITY_LABEL[display.rarity] ?? display.rarity}
-      </span>
       <div className={styles.icon}>{display.icon}</div>
       <div className={styles.name}>{ach.name}</div>
       <div className={styles.condition}>{ach.condition}</div>
