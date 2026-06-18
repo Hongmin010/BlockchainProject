@@ -44,7 +44,7 @@ services:
       - key: DATABASE_SSL
         value: "true"          # Supabase 연결은 TLS 필수 (pool.js 가 자동 감지하지만 명시)
       - key: ACHIEVEMENT_CONTRACT_ADDRESS
-        value: "0xc65089C74f1A315962BE5e172255b568a29F491c"   # 업적 NFT (공개 주소라 평문 OK) — /api/achievements/* 가 사용
+        value: "0x7b5a6404bda67B085aA40aEFbfe72AB9BD28dd4B"   # 업적 NFT (공개 주소라 평문 OK) — /api/achievements/* 가 사용
 
 # ------------------------------------------------------------
 #  (추후) 인덱서를 클라우드로 옮길 때 활성화할 Background Worker
