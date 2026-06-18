@@ -4,17 +4,20 @@ import { useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode, MAX_EXTRA_LEVEL, MAX_TOTAL_LEVEL } from '../hooks/useAdvancedForge';
+import {
+  useAdvancedForge,
+  AdvancedMode,
+  MAX_EXTRA_LEVEL,
+  MAX_TOTAL_LEVEL,
+  fetchDeclaredAdvancedRates,
+} from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
   fetchMerkleItems,
-  fetchAdvancedStats,
-  fetchAdvancedRatesHistory,
   fetchAdvancedRecentAttempts,
-  latestAdvancedRates,
 } from '../api/api';
 import CatList from './Game/CatList';
 import ForgeStage from './Game/ForgeStage';
@@ -185,35 +188,20 @@ export default function Game({ address, onConnect, wallet }) {
       })
       .catch(() => {});
 
-    // 확률표: rates/history의 (mode, 단계)별 최신 확률 우선,
-    // 이력이 없는 단계는 stats 행으로 폴백 (stats는 그룹 순서상 최신 보장이 없음)
-    Promise.all([
-      fetchAdvancedRatesHistory().catch(() => null),
-      fetchAdvancedStats().catch(() => null),
-    ]).then(([ratesData, stats]) => {
-      const latest = latestAdvancedRates(ratesData?.history);
-      const buildTable = (mode, statsRows, withDestroy) =>
-        DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-          const hist = latest.get(`${mode}-${i}`);
-          if (hist) {
-            return {
-              ...row,
-              successProb: hist.newSuccessRateBp / 100,
-              destroyProb: withDestroy ? hist.newDestroyRateBp / 100 : row.destroyProb,
-            };
-          }
-          const match = (statsRows ?? []).find((s) => s.extraLevel === i);
-          return match
-            ? {
-                ...row,
-                successProb: match.declaredSuccessRateBp / 100,
-                destroyProb: withDestroy ? match.declaredDestroyRateBp / 100 : row.destroyProb,
-              }
-            : row;
-        });
-      setAdvSafeTable(buildTable(AdvancedMode.Safe, stats?.safe, false));
-      setAdvRiskyTable(buildTable(AdvancedMode.Risky, stats?.risky, true));
-    });
+    // 상급 확률표: 선언 확률을 백엔드 거치지 않고 컨트랙트에서 직접 읽는다.
+    // (투명성 주제 — 화면의 숫자가 곧 온체인 값. 누구나 컨트랙트로 검증 가능)
+    fetchDeclaredAdvancedRates()
+      .then(({ safe, risky }) => {
+        const fill = (rates) =>
+          DEFAULT_ADV_PROB_TABLE.map((row, i) => ({
+            ...row,
+            successProb: rates[i].successProb,
+            destroyProb: rates[i].destroyProb,
+          }));
+        setAdvSafeTable(fill(safe));
+        setAdvRiskyTable(fill(risky));
+      })
+      .catch((err) => console.error('[Game] 상급 선언 확률 로드 실패:', err));
 
     // 최근 강화 결과: 전체 사용자(글로벌) 피드. '전체 보기'는 대시보드로 이동.
     Promise.all([
