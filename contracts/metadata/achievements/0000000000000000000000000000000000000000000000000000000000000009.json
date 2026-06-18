@@ -1,0 +1,32 @@
+{
+  "name": "CatForge: Safety Net Master",
+  "description": "Awarded to a player who achieved ten guaranteed safe enhancement successes.",
+  "image": "ipfs://IMAGE_CID/safety-net-master.png",
+  "external_url": "https://catforge.example.com",
+  "attributes": [
+    {
+      "trait_type": "Achievement",
+      "value": "Safety Net Master"
+    },
+    {
+      "trait_type": "Achievement Type",
+      "value": "Guaranteed Safe Enhancement"
+    },
+    {
+      "trait_type": "Guaranteed Safe Successes",
+      "value": 10
+    },
+    {
+      "trait_type": "Requirement",
+      "value": "Trigger 10 guaranteed safe enhancement successes"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Legendary"
+    },
+    {
+      "trait_type": "Transferability",
+      "value": "Soulbound"
+    }
+  ]
+}

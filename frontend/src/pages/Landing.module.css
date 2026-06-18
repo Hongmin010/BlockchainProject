@@ -59,29 +59,16 @@
   padding: 40px 20px;
 }
 
-/* 플로팅 카드 */
-.floatResult,
-.floatOdds {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  padding: 12px 14px;
-  background: rgba(37, 30, 23, 0.92) !important;
-  backdrop-filter: blur(8px);
-}
-
-.floatResult {
-  bottom: 20px;
-  left: 0;
-  gap: 10px;
-}
-
-.floatOdds {
-  top: 20px;
-  right: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 10px 14px;
+/* 히어로 고양이 이미지 — CharacterStage 무대 위에 표시 */
+.heroCat {
+  width: 72%;
+  height: auto;
+  position: relative;
+  z-index: 1;
+  image-rendering: pixelated; /* 픽셀아트 확대 시 또렷하게 */
+  filter: drop-shadow(0 16px 32px rgba(0, 0, 0, 0.45));
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* ── 하단 CTA ── */

@@ -36,6 +36,18 @@ export default function Header({ address = null, onConnect }) {
         >
           온체인 검증
         </NavLink>
+        <NavLink
+          to="/ranking"
+          className={({ isActive }) => (isActive ? `${styles.link} ${styles.active}` : styles.link)}
+        >
+          명예의 전당
+        </NavLink>
+        <NavLink
+          to="/achievements"
+          className={({ isActive }) => (isActive ? `${styles.link} ${styles.active}` : styles.link)}
+        >
+          업적
+        </NavLink>
       </nav>
 
       {short ? (

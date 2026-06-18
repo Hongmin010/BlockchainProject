@@ -120,6 +120,7 @@
 
 .barGroup {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -139,13 +140,17 @@
 }
 
 .barExpected {
-  width: 18px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18px;
   background: var(--ink-4);
   border-radius: 4px 4px 0 0;
 }
 
 .barActual {
-  width: 18px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18px;
   background: linear-gradient(180deg, var(--ember-300), var(--ember-500));
   border-radius: 4px 4px 0 0;
   box-shadow: 0 0 8px rgba(255, 122, 26, 0.4);
@@ -172,6 +177,131 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* ── 상급 강화 카드 ── */
+.advCard {
+  margin-top: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tab,
+.tabActive {
+  padding: 7px 14px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.tab:hover {
+  background: var(--bg-3);
+  color: var(--ink-1);
+}
+
+.tabActive {
+  background: var(--bg-3);
+  color: var(--ink-1);
+  border-color: var(--bg-4);
+}
+
+/* 파괴율 막대 (상남자 모드) */
+.barDestroyExpected {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18px;
+  background: rgba(232, 98, 60, 0.3);
+  border-radius: 4px 4px 0 0;
+}
+
+.barDestroyActual {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18px;
+  background: linear-gradient(180deg, #ff9270, var(--fail));
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 0 8px rgba(232, 98, 60, 0.4);
+}
+
+.legendDotRedDim {
+  width: 12px;
+  height: 12px;
+  background: rgba(232, 98, 60, 0.3);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legendDotRed {
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(180deg, #ff9270, var(--fail));
+  border-radius: 3px;
+  box-shadow: 0 0 6px rgba(232, 98, 60, 0.5);
+  flex-shrink: 0;
+}
+
+/* 데이터 없는 단계 표시 */
+.noData {
+  align-self: center;
+  margin: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+/* 중립(표본 부족·데이터 없음) 안내 — verifyNote 색 오버라이드 */
+.noteNeutral {
+  background: var(--bg-3);
+  border-color: var(--bg-4);
+  color: var(--ink-3);
+}
+
+/* ── 확률 변경 이력 ── */
+.historySection {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--bg-3);
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.historyItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.historyMeta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.historyChange {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.historyPrev {
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 /* ── 도넛 차트 ── */

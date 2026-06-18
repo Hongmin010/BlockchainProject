@@ -1,19 +1,29 @@
 import { useEffect, useCallback } from 'react';
-import { useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Header, Badge, Button, StageBar, TxHash } from '../components';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode, AdvancedResultType } from '../hooks/useAdvancedForge';
+import {
+  useAdvancedForge,
+  AdvancedMode,
+  MAX_EXTRA_LEVEL,
+  MAX_TOTAL_LEVEL,
+  fetchDeclaredAdvancedRates,
+} from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
-  fetchAdvancedStats,
-  formatDateTime,
-  shortenTx,
+  fetchMerkleItems,
+  fetchAdvancedRecentAttempts,
 } from '../api/api';
+import CatList from './Game/CatList';
+import ForgeStage from './Game/ForgeStage';
+import ProbabilityCard from './Game/ProbabilityCard';
+import RecentAttemptsCard from './Game/RecentAttemptsCard';
+import { ADV_RESULT_INFO } from './Game/constants';
 import styles from './Game.module.css';
 
 // 확률표 (컨트랙트 기본값 — API 로드 전 폴백)
@@ -25,30 +35,17 @@ const DEFAULT_PROB_TABLE = [
   { stage: 'Lv.4 → Lv.5', prob: 10 },
 ];
 
-const DEFAULT_ADV_PROB_TABLE = [
-  { stage: 'Lv.5 → Lv.6', successProb: null, destroyProb: null },
-  { stage: 'Lv.6 → Lv.7', successProb: null, destroyProb: null },
-  { stage: 'Lv.7 → Lv.8', successProb: null, destroyProb: null },
-  { stage: 'Lv.8 → Lv.9', successProb: null, destroyProb: null },
-  { stage: 'Lv.9 → Lv.10', successProb: null, destroyProb: null },
-];
-
-const CAT_EMOJIS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+// 상급 확률표: extraLevel 0~14 (Lv.5→6 ... Lv.19→20), 총 15단계 (API 로드 전 폴백)
+const DEFAULT_ADV_PROB_TABLE = Array.from({ length: MAX_EXTRA_LEVEL }, (_, i) => ({
+  stage: `Lv.${5 + i} → Lv.${6 + i}`,
+  successProb: null,
+  destroyProb: null,
+}));
 
 const ENHANCEMENT_TYPE = 0;
 
-// 상급 결과 타입별 표시 정보
-const ADV_RESULT_INFO = {
-  [AdvancedResultType.FailKeep]:      { label: '✕ 실패 (유지)',  logStyle: 'logFail',       badgeStyle: 'resultFail' },
-  [AdvancedResultType.Success]:       { label: '✓ 성공!',        logStyle: 'logSuccess',    badgeStyle: 'resultSuccess' },
-  [AdvancedResultType.SafeDowngrade]: { label: '↓ 단계 하락',    logStyle: 'logDowngrade',  badgeStyle: 'resultDowngrade' },
-  [AdvancedResultType.Destroyed]:     { label: '💥 파괴!',        logStyle: 'logDestroyed',  badgeStyle: 'resultDestroyed' },
-  [AdvancedResultType.Guaranteed]:    { label: '🌟 보장 성공!',   logStyle: 'logGuaranteed', badgeStyle: 'resultGuaranteed' },
-};
-
 export default function Game({ address, onConnect, wallet }) {
   const navigate = useNavigate();
-  const stageRef = useRef(null);
 
   // ── useForge 훅 (일반 강화 0~5단계) ─────────────────────────
   const {
@@ -97,9 +94,14 @@ export default function Game({ address, onConnect, wallet }) {
 
   // ── 아이템 목록 상태 ─────────────────────────────────────────
   const [userItems, setUserItems] = useState([]);
+  const [merkleItemIds, setMerkleItemIds] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(1);
+  // displayLevel(훅 라이브 레벨)이 실제로 반영하는 아이템 id.
+  // 선택 전환 직후엔 refreshState가 아직 안 끝나 displayLevel이 직전 아이템 값이므로,
+  // 이 값이 selectedItemId와 일치할 때만 목록 썸네일을 라이브 레벨로 덮어쓴다.
+  const [liveLevelItemId, setLiveLevelItemId] = useState(null);
 
   // ── 상급 해금 알림 ────────────────────────────────────────────
   const [showAdvancedUnlock, setShowAdvancedUnlock] = useState(false);
@@ -118,7 +120,8 @@ export default function Game({ address, onConnect, wallet }) {
 
   // ── 최근 강화 결과 ────────────────────────────────────────────
   const [recentAttempts, setRecentAttempts] = useState([]);
-  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentAdvAttempts, setRecentAdvAttempts] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(true);
 
   // ── 확률표 ───────────────────────────────────────────────────
   const [probTable, setProbTable] = useState(DEFAULT_PROB_TABLE);
@@ -127,19 +130,26 @@ export default function Game({ address, onConnect, wallet }) {
 
   const advProbTable = advMode === AdvancedMode.Risky ? advRiskyTable : advSafeTable;
 
-  // 지갑 연결 시 아이템 목록 로드
+  // merkle itemId 목록 + stats 레벨 데이터를 병합해서 아이템 배열로 만드는 헬퍼
+  const mergeItems = useCallback((itemIds, statsItems) => {
+    const statsMap = new Map(statsItems.map((it) => [String(it.itemId), it]));
+    return itemIds.map((id) => statsMap.get(String(id)) ?? { itemId: String(id), level: 0, totalLevel: 0 });
+  }, []);
+
+  // 지갑 연결 시 아이템 목록 로드 (merkle 전체 목록 + stats 레벨 병합)
   useEffect(() => {
     if (!address) return;
     setItemsLoading(true);
     setItemsError(false);
-    fetchUserStats(address)
-      .then((data) => {
-        const items = data.items ?? [];
-        setUserItems(items);
-        if (items.length > 0 && !items.find((it) => Number(it.itemId) === selectedItemId)) {
-          setSelectedItemId(Number(items[0].itemId));
+    Promise.all([fetchMerkleItems(address), fetchUserStats(address)])
+      .then(([merkleData, statsData]) => {
+        const ids = merkleData.itemIds ?? [];
+        setMerkleItemIds(ids);
+        const merged = mergeItems(ids, statsData.items ?? []);
+        setUserItems(merged);
+        if (merged.length > 0 && !merged.find((it) => Number(it.itemId) === selectedItemId)) {
+          setSelectedItemId(Number(merged[0].itemId));
         }
-        if (items.length === 0) setSelectedItemId(1);
         setItemsLoading(false);
       })
       .catch(() => {
@@ -150,8 +160,14 @@ export default function Game({ address, onConnect, wallet }) {
 
   // 선택 아이템 변경 시 훅 상태 동기화
   useEffect(() => {
-    refreshState(selectedItemId);
-    advRefreshState(selectedItemId);
+    let cancelled = false;
+    setLiveLevelItemId(null); // 새 선택 → 라이브 레벨 갱신 전까지 덮어쓰기 보류
+    Promise.all([refreshState(selectedItemId), advRefreshState(selectedItemId)]).then(() => {
+      if (!cancelled) setLiveLevelItemId(selectedItemId);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedItemId, refreshState, advRefreshState]);
 
   // 마운트 시 확률표 + 최근 결과 로드
@@ -172,36 +188,29 @@ export default function Game({ address, onConnect, wallet }) {
       })
       .catch(() => {});
 
-    fetchAdvancedStats()
+    // 상급 확률표: 선언 확률을 백엔드 거치지 않고 컨트랙트에서 직접 읽는다.
+    // (투명성 주제 — 화면의 숫자가 곧 온체인 값. 누구나 컨트랙트로 검증 가능)
+    fetchDeclaredAdvancedRates()
       .then(({ safe, risky }) => {
-        if (safe?.length > 0) {
-          setAdvSafeTable(
-            DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-              const match = safe.find((s) => s.extraLevel === i);
-              return match ? { ...row, successProb: match.declaredSuccessRateBp / 100 } : row;
-            })
-          );
-        }
-        if (risky?.length > 0) {
-          setAdvRiskyTable(
-            DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-              const match = risky.find((r) => r.extraLevel === i);
-              return match
-                ? {
-                    ...row,
-                    successProb: match.declaredSuccessRateBp / 100,
-                    destroyProb: match.declaredDestroyRateBp / 100,
-                  }
-                : row;
-            })
-          );
-        }
+        const fill = (rates) =>
+          DEFAULT_ADV_PROB_TABLE.map((row, i) => ({
+            ...row,
+            successProb: rates[i].successProb,
+            destroyProb: rates[i].destroyProb,
+          }));
+        setAdvSafeTable(fill(safe));
+        setAdvRiskyTable(fill(risky));
       })
-      .catch(() => {});
+      .catch((err) => console.error('[Game] 상급 선언 확률 로드 실패:', err));
 
-    fetchRecentAttempts(8)
-      .then((data) => {
-        setRecentAttempts(data.attempts ?? []);
+    // 최근 강화 결과: 전체 사용자(글로벌) 피드. '전체 보기'는 대시보드로 이동.
+    Promise.all([
+      fetchRecentAttempts(8),
+      fetchAdvancedRecentAttempts(8),
+    ])
+      .then(([base, adv]) => {
+        setRecentAttempts(base.attempts ?? []);
+        setRecentAdvAttempts(adv.attempts ?? []);
         setRecentLoading(false);
       })
       .catch(() => setRecentLoading(false));
@@ -214,79 +223,61 @@ export default function Game({ address, onConnect, wallet }) {
       .then((data) => setRecentAttempts(data.attempts ?? []))
       .catch(() => {});
     fetchUserStats(address)
-      .then((data) => setUserItems(data.items ?? []))
+      .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
       .catch(() => {});
-  }, [status, address]);
+  }, [status, address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 상급 강화 완료 시 갱신
   useEffect(() => {
-    if (advStatus !== 'done' || !address) return;
-    fetchUserStats(address)
-      .then((data) => setUserItems(data.items ?? []))
-      .catch(() => {});
-  }, [advStatus, address]);
+    if (advStatus !== 'done' || !address || !advLastResult) return;
+
+    // 인덱서가 블록을 처리하기 전에 이벤트가 먼저 도착 → 즉시 옵티미스틱 항목 추가
+    const optimistic = {
+      attemptId: null,
+      requestedTxHash: advLastResult.txHash || null,
+      beforeTotalLevel: advLastResult.beforeTotalLevel,
+      afterTotalLevel: advLastResult.afterTotalLevel,
+      resultType: advLastResult.resultType,
+      modeLabel: advLastResult.mode === 1 ? 'risky' : 'safe',
+      requestedAt: new Date().toISOString(),
+    };
+    setRecentAdvAttempts((prev) => [optimistic, ...prev.slice(0, 7)]);
+
+    // 인덱서 처리 대기 후 실제 DB 데이터로 교체 (CONFIRMATION_BLOCKS + 폴링 주기)
+    const timer = setTimeout(() => {
+      fetchAdvancedRecentAttempts(8)
+        .then((data) => { if (data.attempts?.length > 0) setRecentAdvAttempts(data.attempts); })
+        .catch(() => {});
+      fetchUserStats(address)
+        .then((data) => setUserItems(mergeItems(merkleItemIds, data.items ?? [])))
+        .catch(() => {});
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [advStatus, address, advLastResult]);
 
   // ── 강화 버튼 핸들러 ─────────────────────────────────────────
-  const handleForge = useCallback(async () => {
+  const handleForge = useCallback(async (mode = AdvancedMode.Safe) => {
+    if (isAdvancedMode) setAdvMode(mode); // 확률표 탭도 누른 모드로 동기화
     setProofError(null);
     let proof = [];
-    const needsProof = true;
 
-    if (needsProof) {
-      setIsFetchingProof(true);
-      try {
-        const result = await fetchMerkleProof(address, selectedItemId, ENHANCEMENT_TYPE);
-        proof = result.proof;
-      } catch (err) {
-        setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
-        setIsFetchingProof(false);
-        return;
-      }
+    setIsFetchingProof(true);
+    try {
+      const result = await fetchMerkleProof(address, selectedItemId, ENHANCEMENT_TYPE);
+      proof = result.proof;
+    } catch (err) {
+      setProofError(err.message ?? '등록되지 않은 사용자입니다. 운영자에게 등록을 요청해주세요.');
       setIsFetchingProof(false);
+      return;
     }
+    setIsFetchingProof(false);
 
     if (isAdvancedMode) {
-      advForge(selectedItemId, advMode, proof);
+      advForge(selectedItemId, mode, proof);
     } else {
       forge(selectedItemId, ENHANCEMENT_TYPE, proof);
     }
-  }, [level, isAdvancedMode, advMode, address, selectedItemId, forge, advForge]);
-
-  // ── 파티클 애니메이션 ─────────────────────────────────────────
-  const spawnParticles = useCallback((resultTypeOrBool) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    let colors, count;
-    if (resultTypeOrBool === AdvancedResultType.Destroyed) {
-      colors = ['#ff3300', '#ff6600', '#cc0000']; count = 14;
-    } else if (resultTypeOrBool === AdvancedResultType.Guaranteed) {
-      colors = ['#ffd700', '#ffaa00', '#fff080']; count = 12;
-    } else if (resultTypeOrBool === AdvancedResultType.SafeDowngrade) {
-      colors = ['#e8623c', '#f08060']; count = 4;
-    } else if (resultTypeOrBool === AdvancedResultType.Success || resultTypeOrBool === true) {
-      colors = ['#5fc37a', '#a8f0bc']; count = 8;
-    } else {
-      colors = ['#e8623c', '#f0a090']; count = 4;
-    }
-    for (let i = 0; i < count; i++) {
-      const p = document.createElement('div');
-      p.className = styles.particle;
-      p.style.background = colors[Math.floor(Math.random() * colors.length)];
-      p.style.left = 30 + Math.random() * 40 + '%';
-      p.style.bottom = '30%';
-      p.style.animationDelay = Math.random() * 0.3 + 's';
-      stage.appendChild(p);
-      setTimeout(() => p.remove(), 1200);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (lastResult) spawnParticles(lastResult.success);
-  }, [lastResult, spawnParticles]);
-
-  useEffect(() => {
-    if (advLastResult) spawnParticles(advLastResult.resultType);
-  }, [advLastResult, spawnParticles]);
+  }, [isAdvancedMode, address, selectedItemId, forge, advForge]);
 
   // ── 지갑 미연결 ──────────────────────────────────────────────
   if (!address) {
@@ -302,13 +293,16 @@ export default function Game({ address, onConnect, wallet }) {
     );
   }
 
-  // 인덱서 미운영 시 훅 레벨로 아이템 합성 (백엔드에 아이템 없을 때 폴백)
-  const displayItems =
-    userItems.length > 0
-      ? userItems
-      : level > 0
-      ? [{ itemId: String(selectedItemId), level }]
-      : [];
+  // 목록은 인덱서 DB(fetchUserStats) 기반이라 인덱싱이 밀리면 stale함.
+  // 현재 선택된 고양이는 컨트랙트 직접 조회값(displayLevel)이 있으므로 그 라이브 레벨로 덮어써
+  // 무대/현재 단계와 목록 썸네일 레벨이 어긋나지 않게 한다.
+  // 단, 라이브 레벨이 선택 아이템 것으로 확정됐을 때만(liveLevelItemId 일치) 덮어쓴다.
+  // 선택 전환 직후엔 displayLevel이 직전 아이템 값이라 덮어쓰면 썸네일이 깜빡인다.
+  const displayItems = userItems.map((it) =>
+    Number(it.itemId) === selectedItemId && liveLevelItemId === selectedItemId
+      ? { ...it, level: displayLevel, totalLevel: displayLevel }
+      : it
+  );
 
   // ── 파생 값 ──────────────────────────────────────────────────
   const isForging = isAdvancedMode
@@ -316,25 +310,6 @@ export default function Game({ address, onConnect, wallet }) {
     : status === 'waiting_tx' || status === 'waiting_vrf';
 
   const currentProb = !isAdvancedMode ? (probTable[level]?.prob ?? 0) : null;
-
-  const recentRows = recentAttempts.map((a) => ({
-    tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
-    stage: `Lv.${a.beforeLevel}`,
-    result: a.success ? 'S' : 'F',
-    time: formatDateTime(a.requestedAt),
-  }));
-
-  // 스테이지 이펙트 상태
-  let stageState = null;
-  if (isAdvancedMode && advLastResult) {
-    if (advLastResult.resultType === AdvancedResultType.Destroyed) stageState = 'destroyed';
-    else if (advLastResult.success) stageState = 'success';
-    else stageState = 'fail';
-  } else if (!isAdvancedMode && lastResult) {
-    stageState = lastResult.success ? 'success' : 'fail';
-  }
-
-  const advResultInfo = advLastResult != null ? ADV_RESULT_INFO[advLastResult.resultType] : null;
 
   return (
     <div className={styles.page}>
@@ -344,34 +319,13 @@ export default function Game({ address, onConnect, wallet }) {
         {/* ── 고양이 강화 섹션 ── */}
         <div className={styles.leftCard}>
           {/* 고양이 아이템 목록 */}
-          {!itemsLoading && displayItems.length > 0 && (
-            <div className={styles.catList}>
-              {displayItems.map((item) => {
-                const iid = Number(item.itemId);
-                const isSelected = iid === selectedItemId;
-                return (
-                  <button
-                    key={iid}
-                    className={`${styles.catListItem} ${isSelected ? styles.catListItemSelected : ''}`}
-                    onClick={() => setSelectedItemId(iid)}
-                  >
-                    <span className={styles.catListEmoji}>
-                      {CAT_EMOJIS[Math.min(item.level, CAT_EMOJIS.length - 1)]}
-                    </span>
-                    <span className={`${styles.catListMeta} ${isSelected ? styles.catListMetaSelected : ''}`}>
-                      #{iid} · Lv.{item.level}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {!itemsLoading && itemsError && (
-            <div className={styles.catListEmpty}>⚠ 서버 연결 실패 — 백엔드 서버를 확인해주세요</div>
-          )}
-          {!itemsLoading && !itemsError && displayItems.length === 0 && (
-            <div className={styles.catListEmpty}>보유 고양이 없음 — NFT 민팅 후 이용해주세요</div>
-          )}
+          <CatList
+            items={displayItems}
+            selectedItemId={selectedItemId}
+            onSelect={setSelectedItemId}
+            loading={itemsLoading}
+            error={itemsError}
+          />
 
           {/* 레벨 표시 */}
           <div className={styles.levelRow}>
@@ -383,7 +337,7 @@ export default function Game({ address, onConnect, wallet }) {
                 <span className={styles.levelCurrent}>Lv. {displayLevel}</span>
                 <span style={{ color: 'var(--ink-3)' }}>→</span>
                 <span className={isAdvancedMode ? styles.levelNextAdvanced : styles.levelNext}>
-                  {displayLevel < 10 ? `Lv. ${displayLevel + 1}` : 'MAX'}
+                  {displayLevel < MAX_TOTAL_LEVEL ? `Lv. ${displayLevel + 1}` : 'MAX'}
                 </span>
               </div>
             </div>
@@ -412,55 +366,22 @@ export default function Game({ address, onConnect, wallet }) {
                   <StageBar current={5} max={5} />
                 </div>
                 <span className={styles.stageBarArrow}>›</span>
-                <div className={styles.stageBarSection}>
+                <div className={`${styles.stageBarSection} ${styles.stageBarSectionAdvanced}`}>
                   <span className={`${styles.stageBarLabel} ${styles.stageBarLabelAdvanced}`}>상급</span>
-                  <StageBar current={extraLevel} max={5} variant="advanced" />
+                  <StageBar current={extraLevel} max={MAX_EXTRA_LEVEL} variant="advanced" compact labelOffset={5} />
                 </div>
               </div>
             )}
           </div>
 
           {/* 고양이 무대 */}
-          <div
-            ref={stageRef}
-            className={`${styles.stage}
-              ${stageState === 'success' ? styles.stageSuccess : ''}
-              ${stageState === 'fail' ? styles.stageFail : ''}
-              ${stageState === 'destroyed' ? styles.stageDestroyed : ''}`}
-          >
-            <div className={styles.checker} />
-
-            {stageState && (
-              <div
-                className={`${styles.resultBadge} ${
-                  isAdvancedMode && advResultInfo
-                    ? styles[advResultInfo.badgeStyle]
-                    : stageState === 'success'
-                    ? styles.resultSuccess
-                    : styles.resultFail
-                }`}
-              >
-                {isAdvancedMode && advResultInfo
-                  ? advResultInfo.label
-                  : stageState === 'success'
-                  ? '✓ 성공!'
-                  : '✕ 실패'}
-              </div>
-            )}
-
-            <div
-              className={`${styles.cat}
-                ${stageState === 'success' ? styles.catBounce : ''}
-                ${stageState === 'fail' || stageState === 'destroyed' ? styles.catShake : ''}
-                ${isForging && !stageState ? styles.catWait : ''}`}
-            >
-              {CAT_EMOJIS[Math.min(displayLevel, CAT_EMOJIS.length - 1)]}
-            </div>
-
-            <div className={`${styles.lvBadge} ${isAdvancedMode ? styles.lvBadgeAdvanced : ''}`}>
-              LV. {displayLevel}
-            </div>
-          </div>
+          <ForgeStage
+            isAdvancedMode={isAdvancedMode}
+            displayLevel={displayLevel}
+            isForging={isForging}
+            lastResult={lastResult}
+            advLastResult={advLastResult}
+          />
 
           {/* 상급 강화 해금 알림 */}
           {showAdvancedUnlock && (
@@ -470,10 +391,10 @@ export default function Game({ address, onConnect, wallet }) {
           )}
 
           {/* 보장 / 스트릭 / 차단 배너 */}
-          {isAdvancedMode && isGuaranteed && (
+          {isAdvancedMode && advMode === AdvancedMode.Safe && isGuaranteed && (
             <div className={styles.guaranteedBanner}>🌟 다음 쫄보 강화 보장 발동!</div>
           )}
-          {isAdvancedMode && !isGuaranteed && safeDropStreak > 0 && (
+          {isAdvancedMode && advMode === AdvancedMode.Safe && !isGuaranteed && safeDropStreak > 0 && (
             <div className={styles.safeStreakBanner}>
               연속 하락 {safeDropStreak}회 · {2 - safeDropStreak}회 더 하락 시 보장
             </div>
@@ -531,58 +452,64 @@ export default function Game({ address, onConnect, wallet }) {
             </div>
           )}
 
-          {/* 상급 모드 토글 (버튼 바로 위) */}
-          {isAdvancedMode && (
-            <div className={styles.advModeTabs} style={{ marginBottom: 10 }}>
-              <button
-                className={`${styles.advModeTab} ${advMode === AdvancedMode.Safe ? styles.advModeTabActiveSafe : ''}`}
-                onClick={() => setAdvMode(AdvancedMode.Safe)}
-              >
-                쫄보 강화{isGuaranteed ? ' 🌟' : ''}
-              </button>
-              <button
-                className={`${styles.advModeTab} ${advMode === AdvancedMode.Risky ? styles.advModeTabActiveRisky : ''} ${isRiskyBlocked ? styles.advModeTabBlocked : ''}`}
-                onClick={() => !isRiskyBlocked && setAdvMode(AdvancedMode.Risky)}
-                disabled={isRiskyBlocked}
-              >
-                상남자 강화{isRiskyBlocked ? ' 🔒' : ''}
-              </button>
-            </div>
-          )}
-
           {/* 액션 버튼 */}
           <div className={styles.actions}>
-            <Button
-              variant="primary"
-              size="xl"
-              onClick={handleForge}
-              disabled={
-                isForging ||
-                isFetchingProof ||
-                (isAdvancedMode
-                  ? advPending || totalLevel >= 10 || (advMode === AdvancedMode.Risky && isRiskyBlocked)
-                  : isPending || level >= 5)
-              }
-              loading={isForging || isFetchingProof}
-              style={{ flex: '1 1 auto' }}
-            >
-              {totalLevel >= 10
-                ? '🎉 최고 레벨!'
-                : (isAdvancedMode ? advPending : isPending)
-                ? '⏳ 결과 대기 중…'
-                : isFetchingProof
-                ? '🔑 등록 확인 중…'
-                : isAdvancedMode
-                ? advMode === AdvancedMode.Risky
-                  ? '⚒ 상남자 강화 시도하기'
-                  : isGuaranteed
-                  ? '🌟 보장 강화 시도하기'
-                  : '⚒ 쫄보 강화 시도하기'
-                : '⚒ 강화 시도하기'}
-            </Button>
-            <Button variant="secondary" size="xl" onClick={() => refreshState(selectedItemId)}>
-              새로고침
-            </Button>
+            {!isAdvancedMode ? (
+              <Button
+                variant="primary"
+                size="xl"
+                onClick={() => handleForge()}
+                disabled={isForging || isFetchingProof || isPending || level >= 5}
+                loading={isForging || isFetchingProof}
+                style={{ flex: '1 1 auto' }}
+              >
+                {isPending || isForging
+                  ? '⏳ 결과 대기 중…'
+                  : isFetchingProof
+                  ? '🔑 등록 확인 중…'
+                  : '⚒ 강화 시도하기'}
+              </Button>
+            ) : totalLevel >= MAX_TOTAL_LEVEL ? (
+              <Button variant="primary" size="xl" disabled style={{ flex: '1 1 auto' }}>
+                🎉 최고 레벨!
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  size="xl"
+                  className={styles.btnSafe}
+                  onClick={() => handleForge(AdvancedMode.Safe)}
+                  disabled={isForging || isFetchingProof || advPending}
+                  loading={(isForging || isFetchingProof) && advMode === AdvancedMode.Safe}
+                  style={{ flex: '1 1 auto' }}
+                >
+                  {(isForging || advPending) && advMode === AdvancedMode.Safe
+                    ? '⏳ 결과 대기 중…'
+                    : isFetchingProof && advMode === AdvancedMode.Safe
+                    ? '🔑 등록 확인 중…'
+                    : isGuaranteed
+                    ? '🌟 보장 강화'
+                    : '🛡 쫄보 강화'}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="xl"
+                  onClick={() => handleForge(AdvancedMode.Risky)}
+                  disabled={isForging || isFetchingProof || advPending || isRiskyBlocked}
+                  loading={(isForging || isFetchingProof) && advMode === AdvancedMode.Risky}
+                  style={{ flex: '1 1 auto' }}
+                >
+                  {(isForging || advPending) && advMode === AdvancedMode.Risky
+                    ? '⏳ 결과 대기 중…'
+                    : isFetchingProof && advMode === AdvancedMode.Risky
+                    ? '🔑 등록 확인 중…'
+                    : isRiskyBlocked
+                    ? '🔒 상남자 강화'
+                    : '⚔ 상남자 강화'}
+                </Button>
+              </>
+            )}
           </div>
           <div className={styles.gasNote}>
             <span>⛽</span>
@@ -593,143 +520,25 @@ export default function Game({ address, onConnect, wallet }) {
         {/* ── 확률 & 기록 섹션 ── */}
         <div className={styles.rightCol}>
           {/* 확률표 카드 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h3 className={styles.cardTitle}>
-                {isAdvancedMode ? '상급 강화 확률표' : '단계별 확률표'}
-              </h3>
-              <span className="cf-cap">on-chain published</span>
-            </div>
-
-            {/* 상급 강화 탭 */}
-            {isAdvancedMode && (
-              <>
-                <div className={styles.advModeTabs}>
-                  <button
-                    className={`${styles.advModeTab} ${advMode === AdvancedMode.Safe ? styles.advModeTabActiveSafe : ''}`}
-                    onClick={() => setAdvMode(AdvancedMode.Safe)}
-                  >
-                    쫄보 강화
-                    {isGuaranteed && <span className={styles.guaranteedDot}>🌟</span>}
-                  </button>
-                  <button
-                    className={`${styles.advModeTab} ${advMode === AdvancedMode.Risky ? styles.advModeTabActiveRisky : ''} ${isRiskyBlocked ? styles.advModeTabBlocked : ''}`}
-                    onClick={() => !isRiskyBlocked && setAdvMode(AdvancedMode.Risky)}
-                    disabled={isRiskyBlocked}
-                  >
-                    상남자 강화{isRiskyBlocked ? ' 🔒' : ''}
-                  </button>
-                </div>
-
-                {isGuaranteed ? (
-                  <div className={styles.guaranteedIndicator}>🌟 다음 강화 보장 발동!</div>
-                ) : safeDropStreak > 0 ? (
-                  <div className={styles.streakIndicator}>
-                    연속 하락 {safeDropStreak}회 · {2 - safeDropStreak}회 더 하락 시 보장
-                  </div>
-                ) : null}
-              </>
-            )}
-
-            {/* 확률표 */}
-            <div className={styles.probList}>
-              {isAdvancedMode
-                ? advProbTable.map(({ stage, successProb, destroyProb }, i) => {
-                    const active = i === extraLevel;
-                    return (
-                      <div
-                        key={stage}
-                        className={`${styles.probRow} ${active ? styles.probRowActiveAdv : ''} ${advMode === AdvancedMode.Risky ? styles.probRowRisky : ''}`}
-                      >
-                        <span className={`${styles.probStage} ${active ? styles.probStageActiveAdv : ''}`}>
-                          {stage}
-                        </span>
-                        <div className={styles.probBarWrap}>
-                          <div
-                            className={`${styles.probBarFill} ${active ? styles.probBarActiveAdv : ''}`}
-                            style={{ width: `${successProb ?? 0}%` }}
-                          />
-                        </div>
-                        <span className={`${styles.probValue} ${active ? styles.probValueActiveAdv : ''}`}>
-                          {successProb !== null ? `${successProb}%` : '—'}
-                        </span>
-                        {advMode === AdvancedMode.Risky && (
-                          <span className={styles.destroyRate}>
-                            💥 {destroyProb !== null ? `${destroyProb}%` : '—'}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
-                : probTable.map(({ stage, prob }, i) => {
-                    const active = i === level;
-                    return (
-                      <div key={stage} className={`${styles.probRow} ${active ? styles.probRowActive : ''}`}>
-                        <span className={`${styles.probStage} ${active ? styles.probStageActive : ''}`}>
-                          {stage}
-                        </span>
-                        <div className={styles.probBarWrap}>
-                          <div
-                            className={`${styles.probBarFill} ${active ? styles.probBarActive : ''}`}
-                            style={{ width: `${prob}%` }}
-                          />
-                        </div>
-                        <span className={`${styles.probValue} ${active ? styles.probValueActive : ''}`}>
-                          {prob}%
-                        </span>
-                      </div>
-                    );
-                  })}
-            </div>
-
-            {isAdvancedMode && (
-              <div className={styles.advModeNote}>
-                {advMode === AdvancedMode.Safe
-                  ? '실패 시 단계 -1 하락 · 2회 연속 하락 시 보장 발동'
-                  : '실패 시 Lv.5로 리셋 위험 — 고위험 고수익'}
-              </div>
-            )}
-          </div>
+          <ProbabilityCard
+            isAdvancedMode={isAdvancedMode}
+            advMode={advMode}
+            onModeChange={setAdvMode}
+            probTable={probTable}
+            advProbTable={advProbTable}
+            level={level}
+            extraLevel={extraLevel}
+            isGuaranteed={isGuaranteed}
+            isRiskyBlocked={isRiskyBlocked}
+            safeDropStreak={safeDropStreak}
+          />
 
           {/* 최근 강화 결과 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h3 className={styles.cardTitle}>최근 강화 결과</h3>
-              <span className="cf-cap">
-                <span style={{ color: 'var(--success)' }}>●</span> live · 글로벌
-              </span>
-            </div>
-            <div className={styles.recentList}>
-              {recentLoading ? (
-                <div style={{ textAlign: 'center', padding: 20, color: 'var(--ink-3)', fontSize: 13 }}>
-                  불러오는 중…
-                </div>
-              ) : recentRows.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: 'var(--ink-3)', fontSize: 13 }}>
-                  기록 없음
-                </div>
-              ) : (
-                recentRows.map(({ tx, stage, result: r, time }, idx) => (
-                  <div key={idx} className={styles.recentRow}>
-                    <div className={styles.recentInfo}>
-                      <TxHash hash={tx} shorten={false} />
-                      <span className={styles.recentSub}>
-                        {stage} · {time}
-                      </span>
-                    </div>
-                    <Badge variant={r === 'S' ? 'success' : 'fail'} dot>
-                      {r === 'S' ? '성공' : '실패'}
-                    </Badge>
-                  </div>
-                ))
-              )}
-              <div className={styles.recentMore}>
-                <Link to="/records" className={styles.recentMoreLink}>
-                  전체 보기 →
-                </Link>
-              </div>
-            </div>
-          </div>
+          <RecentAttemptsCard
+            attempts={recentAttempts}
+            advAttempts={recentAdvAttempts}
+            loading={recentLoading}
+          />
         </div>
       </div>
     </div>

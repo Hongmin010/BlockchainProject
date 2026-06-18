@@ -7,3 +7,4 @@ export { default as CharacterStage } from './CharacterStage';
 export { default as ProgressBar } from './ProgressBar';
 export { default as TxHash } from './TxHash';
 export { default as WalletModal } from './WalletModal';
+export { default as RateChangeNotice } from './RateChangeNotice';

@@ -19,11 +19,6 @@
   margin: 0 0 6px;
 }
 
-.titleActions {
-  display: flex;
-  gap: 8px;
-}
-
 /* ── 요약 카드 ── */
 .summaryGrid {
   display: grid;

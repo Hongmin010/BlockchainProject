@@ -17,24 +17,28 @@ type AllowEntry = {
 
 const MY_ADDRESS = "0x76491a444fea8b6c7dc1e12a973631b99f0f1ec9";
 const TEAMMATE_ADDRESS = "0x9A7F7f7e990474659211526fCa723F46d0E89AFF";
+const NEW_TEAMMATE_ADDRESS = "0x5735fC88D65061b16F580A2732d22b3306D336B8";
+const NEW_TEAMMATE_ADDRESS_2 = "0xE59e3a0D357785b0f27D1f01e831a5A8EE2D36bB";
+
+const ALLOWED_USERS = [
+  MY_ADDRESS,
+  TEAMMATE_ADDRESS,
+  NEW_TEAMMATE_ADDRESS,
+  NEW_TEAMMATE_ADDRESS_2,
+];
 
 function createAllowList(): AllowEntry[] {
   const list: AllowEntry[] = [];
 
-  // 기존 네 테스트 권한 유지
-  list.push({
-    user: MY_ADDRESS,
-    itemId: 2n,
-    enhancementType: 0,
-  });
-
-  // 팀원에게 itemId 1~100 강화 권한 부여
-  for (let itemId = 1; itemId <= 100; itemId++) {
-    list.push({
-      user: TEAMMATE_ADDRESS,
-      itemId: BigInt(itemId),
-      enhancementType: 0,
-    });
+  // 모든 등록 지갑에게 itemId 1~100 강화 권한 부여
+  for (const user of ALLOWED_USERS) {
+    for (let itemId = 1; itemId <= 100; itemId++) {
+      list.push({
+        user,
+        itemId: BigInt(itemId),
+        enhancementType: 0,
+      });
+    }
   }
 
   return list;
@@ -149,7 +153,13 @@ async function main() {
   const tree = buildTree(leaves);
   const root = getRoot(tree);
 
+  console.log("\nAllowed users:");
+  for (const user of ALLOWED_USERS) {
+    console.log("-", getAddress(user));
+  }
+
   console.log("\nAllow list count:", allowList.length);
+  console.log("Expected count:", ALLOWED_USERS.length * 100);
   console.log("New Merkle Root:", root);
 
   const claims = allowList.map((entry, index) => ({
@@ -218,16 +228,21 @@ async function main() {
 
   console.log("Claims written to:", OUTPUT_CLAIMS_PATH);
 
-  const teammateClaims = claims.filter(
-    (claim) => claim.user.toLowerCase() === TEAMMATE_ADDRESS.toLowerCase()
-  );
+  console.log("\nSample proofs by user:");
+  for (const user of ALLOWED_USERS) {
+    const userClaims = claims.filter(
+      (claim) => claim.user.toLowerCase() === user.toLowerCase()
+    );
 
-  console.log("\nTeammate sample proofs:");
-  console.log("itemId 1:");
-  console.log(JSON.stringify(teammateClaims[0], null, 2));
+    console.log(`\nUser: ${getAddress(user)}`);
+    console.log("claim count:", userClaims.length);
 
-  console.log("\nitemId 100:");
-  console.log(JSON.stringify(teammateClaims[99], null, 2));
+    console.log("itemId 1:");
+    console.log(JSON.stringify(userClaims[0], null, 2));
+
+    console.log("\nitemId 100:");
+    console.log(JSON.stringify(userClaims[99], null, 2));
+  }
 }
 
 main().catch((error) => {

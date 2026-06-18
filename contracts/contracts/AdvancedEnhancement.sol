@@ -21,7 +21,14 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
     uint16 private constant BPS_DENOMINATOR = 10_000;
 
     uint8 public constant REQUIRED_BASE_LEVEL = 5;
-    uint8 public constant MAX_EXTRA_LEVEL = 5;
+
+    // 기본 5강 + extra 15 = 최종 20강
+    uint8 public constant MAX_EXTRA_LEVEL = 15;
+    uint8 public constant MAX_TOTAL_LEVEL = 20;
+
+    uint8 public constant REALISTIC_TARGET_LEVEL = 15;
+    uint8 public constant PLAYGROUND_START_LEVEL = 16;
+
     uint8 public constant SAFE_GUARANTEE_DROP_STREAK = 2;
 
     // 기존 기본 강화 컨트랙트의 Merkle Tree에서 사용하던 enhancementType
@@ -79,11 +86,35 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         AttemptState state;
     }
 
-    // 0이면 최종 5강, 1이면 최종 6강, ..., 5이면 최종 10강
+    struct AchievementStats {
+        uint64 totalAttempts;
+        uint64 totalSuccesses;
+        uint64 totalGuaranteedSuccesses;
+        uint64 totalFailures;
+        uint64 totalDestructions;
+        uint64 totalSafeDowngrades;
+
+        uint8 highestTotalLevel;
+
+        uint8 currentSuccessStreak;
+        uint8 maxSuccessStreak;
+
+        uint8 currentFailureStreak;
+        uint8 maxFailureStreak;
+
+        uint8 lastDestroyedLevelLoss;
+        uint8 maxDestroyedLevelLoss;
+        uint64 totalDestroyedLevelLoss;
+    }
+
+    // 0이면 최종 5강, 1이면 최종 6강, ..., 15이면 최종 20강
     mapping(address => mapping(uint256 => uint8)) public extraLevels;
 
     // 안전 강화에서 실제 하락이 연속으로 발생한 횟수
     mapping(address => mapping(uint256 => uint8)) public safeDropStreaks;
+
+    // 업적 검증용 누적 통계
+    mapping(address => mapping(uint256 => AchievementStats)) public achievementStats;
 
     // attemptId -> attempt
     mapping(uint256 => AdvancedAttempt) public attempts;
@@ -129,6 +160,21 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         uint16 rollBps
     );
 
+    event AchievementStatsUpdated(
+        address indexed user,
+        uint256 indexed itemId,
+        uint64 totalAttempts,
+        uint64 totalSuccesses,
+        uint64 totalGuaranteedSuccesses,
+        uint64 totalFailures,
+        uint64 totalDestructions,
+        uint8 highestTotalLevel,
+        uint8 currentSuccessStreak,
+        uint8 currentFailureStreak,
+        uint8 lastDestroyedLevelLoss,
+        uint8 maxDestroyedLevelLoss
+    );
+
     event AdvancedRateUpdated(
         address indexed updater,
         uint8 indexed mode,
@@ -161,19 +207,45 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
 
         // mode 0: Safe
         // 파괴 없음, 성공률 낮음, 실패 시 하락
-        advancedRates[uint8(AdvancedEnhancementMode.Safe)][0] = AdvancedRate(3000, 0); // 5 -> 6
-        advancedRates[uint8(AdvancedEnhancementMode.Safe)][1] = AdvancedRate(2500, 0); // 6 -> 7
-        advancedRates[uint8(AdvancedEnhancementMode.Safe)][2] = AdvancedRate(2000, 0); // 7 -> 8
-        advancedRates[uint8(AdvancedEnhancementMode.Safe)][3] = AdvancedRate(1500, 0); // 8 -> 9
-        advancedRates[uint8(AdvancedEnhancementMode.Safe)][4] = AdvancedRate(1000, 0); // 9 -> 10
+        // 5~15강: 현실 도달 구간
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][0] = AdvancedRate(4500, 0); // 5 -> 6
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][1] = AdvancedRate(4000, 0); // 6 -> 7
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][2] = AdvancedRate(3500, 0); // 7 -> 8
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][3] = AdvancedRate(3000, 0); // 8 -> 9
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][4] = AdvancedRate(2500, 0); // 9 -> 10
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][5] = AdvancedRate(2200, 0); // 10 -> 11
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][6] = AdvancedRate(1900, 0); // 11 -> 12
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][7] = AdvancedRate(1600, 0); // 12 -> 13
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][8] = AdvancedRate(1300, 0); // 13 -> 14
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][9] = AdvancedRate(1000, 0); // 14 -> 15
+
+        // 16~20강: 놀이터 구간
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][10] = AdvancedRate(600, 0); // 15 -> 16
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][11] = AdvancedRate(450, 0); // 16 -> 17
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][12] = AdvancedRate(300, 0); // 17 -> 18
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][13] = AdvancedRate(200, 0); // 18 -> 19
+        advancedRates[uint8(AdvancedEnhancementMode.Safe)][14] = AdvancedRate(100, 0); // 19 -> 20
 
         // mode 1: Risky
         // 성공률 높음, 실패 시 유지, 대신 파괴 확률 있음
-        advancedRates[uint8(AdvancedEnhancementMode.Risky)][0] = AdvancedRate(4500, 500);  // 5 -> 6
-        advancedRates[uint8(AdvancedEnhancementMode.Risky)][1] = AdvancedRate(4000, 1000); // 6 -> 7
-        advancedRates[uint8(AdvancedEnhancementMode.Risky)][2] = AdvancedRate(3500, 1500); // 7 -> 8
-        advancedRates[uint8(AdvancedEnhancementMode.Risky)][3] = AdvancedRate(3000, 2000); // 8 -> 9
-        advancedRates[uint8(AdvancedEnhancementMode.Risky)][4] = AdvancedRate(2500, 2500); // 9 -> 10
+        // 5~15강: 현실 도달 구간
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][0] = AdvancedRate(6000, 500);  // 5 -> 6
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][1] = AdvancedRate(5500, 700);  // 6 -> 7
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][2] = AdvancedRate(5000, 1000); // 7 -> 8
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][3] = AdvancedRate(4500, 1300); // 8 -> 9
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][4] = AdvancedRate(4000, 1600); // 9 -> 10
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][5] = AdvancedRate(3500, 2000); // 10 -> 11
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][6] = AdvancedRate(3000, 2300); // 11 -> 12
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][7] = AdvancedRate(2500, 2600); // 12 -> 13
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][8] = AdvancedRate(2000, 3000); // 13 -> 14
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][9] = AdvancedRate(1500, 3500); // 14 -> 15
+
+        // 16~20강: 놀이터 구간
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][10] = AdvancedRate(1000, 4500); // 15 -> 16
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][11] = AdvancedRate(800, 5000);  // 16 -> 17
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][12] = AdvancedRate(600, 5500);  // 17 -> 18
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][13] = AdvancedRate(400, 6000);  // 18 -> 19
+        advancedRates[uint8(AdvancedEnhancementMode.Risky)][14] = AdvancedRate(200, 6500);  // 19 -> 20
     }
 
     function requestAdvancedEnhancementWithProof(
@@ -228,8 +300,6 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
 
         uint8 beforeSafeDropStreak = safeDropStreaks[msg.sender][itemId];
 
-        // 안전 강화 2연속 하락으로 보장 상태가 된 경우,
-        // Risky 강화로 보장을 우회하는 것을 막음.
         require(
             !(
                 mode == uint8(AdvancedEnhancementMode.Risky) &&
@@ -323,6 +393,14 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         extraLevels[user][itemId] = afterExtraLevel;
         safeDropStreaks[user][itemId] = afterSafeDropStreak;
 
+        _recordAchievementStats(
+            user,
+            itemId,
+            beforeExtraLevel,
+            afterExtraLevel,
+            uint8(AdvancedResultType.Guaranteed)
+        );
+
         emit AdvancedEnhancementRequested(
             attemptId,
             user,
@@ -404,6 +482,14 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         extraLevels[attempt.user][attempt.itemId] = afterExtraLevel;
         safeDropStreaks[attempt.user][attempt.itemId] = afterSafeDropStreak;
 
+        _recordAchievementStats(
+            attempt.user,
+            attempt.itemId,
+            attempt.beforeExtraLevel,
+            afterExtraLevel,
+            resultType
+        );
+
         emit AdvancedEnhancementResult(
             attemptId,
             attempt.user,
@@ -451,8 +537,6 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
             );
         }
 
-        // 5강보다 아래로는 하락하지 않음.
-        // 실제 하락이 발생했을 때만 safeDropStreak 증가.
         if (beforeExtraLevel > 0) {
             return (
                 beforeExtraLevel - 1,
@@ -469,42 +553,136 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
     }
 
     function _resolveRiskyResult(
-    uint8 beforeExtraLevel,
-    uint8 beforeSafeDropStreak,
-    uint16 rollBps,
-    uint16 successRateBps,
-    uint16 destroyRateBps
-)
-    internal
-    pure
-    returns (
-        uint8 afterExtraLevel,
-        uint8 afterSafeDropStreak,
-        uint8 resultType
+        uint8 beforeExtraLevel,
+        uint8 beforeSafeDropStreak,
+        uint16 rollBps,
+        uint16 successRateBps,
+        uint16 destroyRateBps
     )
-{
-    if (rollBps < successRateBps) {
+        internal
+        pure
+        returns (
+            uint8 afterExtraLevel,
+            uint8 afterSafeDropStreak,
+            uint8 resultType
+        )
+    {
+        if (rollBps < successRateBps) {
+            return (
+                beforeExtraLevel + 1,
+                0,
+                uint8(AdvancedResultType.Success)
+            );
+        }
+
+        if (rollBps < successRateBps + destroyRateBps) {
+            return (
+                0,
+                0,
+                uint8(AdvancedResultType.Destroyed)
+            );
+        }
+
         return (
-            beforeExtraLevel + 1,
-            0,
-            uint8(AdvancedResultType.Success)
+            beforeExtraLevel,
+            beforeSafeDropStreak,
+            uint8(AdvancedResultType.FailKeep)
         );
     }
 
-    if (rollBps < successRateBps + destroyRateBps) {
-        return (
-            0,
-            0,
-            uint8(AdvancedResultType.Destroyed)
+    function _recordAchievementStats(
+        address user,
+        uint256 itemId,
+        uint8 beforeExtraLevel,
+        uint8 afterExtraLevel,
+        uint8 resultType
+    ) internal {
+        AchievementStats storage stats = achievementStats[user][itemId];
+
+        uint8 beforeTotalLevel = _toTotalLevel(beforeExtraLevel);
+        uint8 afterTotalLevel = _toTotalLevel(afterExtraLevel);
+
+        stats.totalAttempts += 1;
+
+        if (beforeTotalLevel > stats.highestTotalLevel) {
+            stats.highestTotalLevel = beforeTotalLevel;
+        }
+
+        if (afterTotalLevel > stats.highestTotalLevel) {
+            stats.highestTotalLevel = afterTotalLevel;
+        }
+
+        bool isSuccess =
+            resultType == uint8(AdvancedResultType.Success) ||
+            resultType == uint8(AdvancedResultType.Guaranteed);
+
+        if (isSuccess) {
+            stats.totalSuccesses += 1;
+
+            if (resultType == uint8(AdvancedResultType.Guaranteed)) {
+                stats.totalGuaranteedSuccesses += 1;
+            }
+
+            stats.currentSuccessStreak = _incrementUint8(stats.currentSuccessStreak);
+            if (stats.currentSuccessStreak > stats.maxSuccessStreak) {
+                stats.maxSuccessStreak = stats.currentSuccessStreak;
+            }
+
+            stats.currentFailureStreak = 0;
+        } else {
+            stats.totalFailures += 1;
+
+            stats.currentFailureStreak = _incrementUint8(stats.currentFailureStreak);
+            if (stats.currentFailureStreak > stats.maxFailureStreak) {
+                stats.maxFailureStreak = stats.currentFailureStreak;
+            }
+
+            stats.currentSuccessStreak = 0;
+
+            if (resultType == uint8(AdvancedResultType.SafeDowngrade)) {
+                stats.totalSafeDowngrades += 1;
+            }
+
+            if (resultType == uint8(AdvancedResultType.Destroyed)) {
+                stats.totalDestructions += 1;
+
+                uint8 lostLevel = 0;
+                if (beforeTotalLevel > afterTotalLevel) {
+                    lostLevel = beforeTotalLevel - afterTotalLevel;
+                }
+
+                stats.lastDestroyedLevelLoss = lostLevel;
+                stats.totalDestroyedLevelLoss += uint64(lostLevel);
+
+                if (lostLevel > stats.maxDestroyedLevelLoss) {
+                    stats.maxDestroyedLevelLoss = lostLevel;
+                }
+            }
+        }
+
+        emit AchievementStatsUpdated(
+            user,
+            itemId,
+            stats.totalAttempts,
+            stats.totalSuccesses,
+            stats.totalGuaranteedSuccesses,
+            stats.totalFailures,
+            stats.totalDestructions,
+            stats.highestTotalLevel,
+            stats.currentSuccessStreak,
+            stats.currentFailureStreak,
+            stats.lastDestroyedLevelLoss,
+            stats.maxDestroyedLevelLoss
         );
     }
 
-    return (
-        beforeExtraLevel,
-        beforeSafeDropStreak,
-        uint8(AdvancedResultType.FailKeep)
-    );
-}
+    function _incrementUint8(uint8 value) internal pure returns (uint8) {
+        if (value == type(uint8).max) {
+            return value;
+        }
+
+        return value + 1;
+    }
 
     function setAdvancedRate(
         uint8 mode,
@@ -610,6 +788,49 @@ contract AdvancedEnhancementGameVRF is VRFConsumerBaseV2Plus {
         uint256 itemId
     ) external view returns (uint256) {
         return pendingAttemptOfItem[user][itemId];
+    }
+
+    function getAchievementStats(
+        address user,
+        uint256 itemId
+    )
+        external
+        view
+        returns (
+            uint64 totalAttempts,
+            uint64 totalSuccesses,
+            uint64 totalGuaranteedSuccesses,
+            uint64 totalFailures,
+            uint64 totalDestructions,
+            uint64 totalSafeDowngrades,
+            uint8 highestTotalLevel,
+            uint8 currentSuccessStreak,
+            uint8 maxSuccessStreak,
+            uint8 currentFailureStreak,
+            uint8 maxFailureStreak,
+            uint8 lastDestroyedLevelLoss,
+            uint8 maxDestroyedLevelLoss,
+            uint64 totalDestroyedLevelLoss
+        )
+    {
+        AchievementStats memory stats = achievementStats[user][itemId];
+
+        return (
+            stats.totalAttempts,
+            stats.totalSuccesses,
+            stats.totalGuaranteedSuccesses,
+            stats.totalFailures,
+            stats.totalDestructions,
+            stats.totalSafeDowngrades,
+            stats.highestTotalLevel,
+            stats.currentSuccessStreak,
+            stats.maxSuccessStreak,
+            stats.currentFailureStreak,
+            stats.maxFailureStreak,
+            stats.lastDestroyedLevelLoss,
+            stats.maxDestroyedLevelLoss,
+            stats.totalDestroyedLevelLoss
+        );
     }
 
     function _toTotalLevel(uint8 extraLevel) internal pure returns (uint8) {
