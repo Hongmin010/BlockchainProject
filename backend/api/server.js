@@ -45,6 +45,7 @@
  *   GET /api/advanced/attempts/recent    고급강화 최근 시도 목록
  *   GET /api/advanced/attempts/:id       ★ 고급강화 시도 1건 + 재검증 (T5)
  *   GET /api/advanced/stats              ★ 고급강화 모드·단계별 통계 검정 (T6)
+ *   GET /api/advanced/rates              ★ 고급강화 컨트랙트 정의 확률표 (현재값, RPC)
  *   GET /api/advanced/rates/history      ★ 고급강화 확률표 변경 이력
  *   GET /api/ranking                     랭킹 — 최고단계 아이템 / 도전왕 / 성공왕 (T7)
  *
@@ -66,6 +67,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { ethers } = require('ethers');
 
 const db = require('../db/pool');
 const { summarizeLevel, rateToBp } = require('../utils/stats');
@@ -804,6 +806,71 @@ app.get('/api/advanced/rates/history', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+
+/**
+ * GET /api/advanced/rates   ★ 고급강화 "컨트랙트 정의 확률표" (현재값)
+ *
+ *  컨트랙트(advancedRates 매핑)를 RPC 로 직접 읽어 전 단계 확률을 내려준다.
+ *  rates/history 는 "변경 이력"(이벤트 기반)이라, 배포 시 기본값만 세팅돼
+ *  변경 이벤트가 없으면 비어 있다 → 프론트가 "공개확률 기준값"으로 쓸 현재
+ *  확률표를 여기서 RPC read-on-demand 로 제공한다.
+ *
+ *  반환
+ *  ----
+ *   200 { contract, maxExtraLevel,
+ *         safe:  [{ extraLevel, totalLevel, successRateBp, destroyRateBp }],
+ *         risky: [{ extraLevel, totalLevel, successRateBp, destroyRateBp }] }
+ *   503 { error:'advanced_not_configured' }   ← RPC_URL/ADVANCED_CONTRACT_ADDRESS 미설정
+ *   502 { error:'rpc_error' }
+ */
+const ADVANCED_RATES_ABI = [
+  'function advancedRates(uint8,uint8) view returns (uint16 successRateBps, uint16 destroyRateBps)',
+  'function MAX_EXTRA_LEVEL() view returns (uint8)',
+];
+const ADVANCED_BASE_LEVEL = 5; // 상급강화는 base 5 위에서 시작 (totalLevel = 5 + extraLevel)
+
+app.get('/api/advanced/rates', async (_req, res, next) => {
+  const rpcUrl = process.env.RPC_URL;
+  const address = process.env.ADVANCED_CONTRACT_ADDRESS;
+  if (!rpcUrl || !address) {
+    return res.status(503).json({
+      error: 'advanced_not_configured',
+      message: 'RPC_URL / ADVANCED_CONTRACT_ADDRESS 환경변수가 필요합니다',
+    });
+  }
+  try {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const adv = new ethers.Contract(address, ADVANCED_RATES_ABI, provider);
+    const maxExtra = Number(await adv.MAX_EXTRA_LEVEL());
+
+    // mode 0(Safe)/1(Risky) × extraLevel 0..maxExtra 를 병렬 조회
+    const jobs = [];
+    for (let lv = 0; lv <= maxExtra; lv++) {
+      jobs.push(adv.advancedRates(0, lv), adv.advancedRates(1, lv));
+    }
+    const out = await Promise.all(jobs);
+
+    const safe = [];
+    const risky = [];
+    for (let lv = 0; lv <= maxExtra; lv++) {
+      const s = out[lv * 2];
+      const r = out[lv * 2 + 1];
+      safe.push({
+        extraLevel: lv, totalLevel: ADVANCED_BASE_LEVEL + lv,
+        successRateBp: Number(s.successRateBps), destroyRateBp: Number(s.destroyRateBps),
+      });
+      risky.push({
+        extraLevel: lv, totalLevel: ADVANCED_BASE_LEVEL + lv,
+        successRateBp: Number(r.successRateBps), destroyRateBp: Number(r.destroyRateBps),
+      });
+    }
+    res.json({ contract: address, maxExtraLevel: maxExtra, safe, risky });
+  } catch (err) {
+    console.error('[api] /api/advanced/rates RPC 오류:', err.message);
+    return res.status(502).json({ error: 'rpc_error', message: err.message });
   }
 });
 
