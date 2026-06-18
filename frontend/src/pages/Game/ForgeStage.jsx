@@ -6,6 +6,9 @@ import { ADV_RESULT_INFO, catImageForLevel, DESTROY_IMAGE } from './constants';
 // 파괴용 이미지를 보여주는 시간(ms). 이 동안은 5레벨 이미지 대신 파괴 연출을 띄운다.
 const DESTROY_ANIM_MS = 1000;
 
+// 결과 배지/연출이 화면에 떠 있는 시간(ms). 이 시간이 지나면 자동으로 사라진다.
+const RESULT_VISIBLE_MS = 2500;
+
 // 고양이 무대 (결과 배지 + 레벨 배지 + 파티클 이펙트)
 export default function ForgeStage({ isAdvancedMode, displayLevel, isForging, lastResult, advLastResult }) {
   const stageRef = useRef(null);
@@ -14,12 +17,24 @@ export default function ForgeStage({ isAdvancedMode, displayLevel, isForging, la
   // 잠깐 파괴용 이미지를 띄웠다가 5레벨 이미지로 전환하기 위한 연출 상태.
   const [isDestroying, setIsDestroying] = useState(false);
 
+  // 결과 배지/연출을 잠깐만 보여주기 위한 표시 상태. 새 결과가 오면 다시 켜지고,
+  // RESULT_VISIBLE_MS 후 자동으로 꺼진다.
+  const [resultVisible, setResultVisible] = useState(false);
+
   useEffect(() => {
     if (advLastResult?.resultType !== AdvancedResultType.Destroyed) return;
     setIsDestroying(true);
     const t = setTimeout(() => setIsDestroying(false), DESTROY_ANIM_MS);
     return () => clearTimeout(t);
   }, [advLastResult]);
+
+  useEffect(() => {
+    const result = isAdvancedMode ? advLastResult : lastResult;
+    if (!result) return;
+    setResultVisible(true);
+    const t = setTimeout(() => setResultVisible(false), RESULT_VISIBLE_MS);
+    return () => clearTimeout(t);
+  }, [isAdvancedMode, lastResult, advLastResult]);
 
   // ── 파티클 애니메이션 ─────────────────────────────────────────
   const spawnParticles = useCallback((resultTypeOrBool) => {
@@ -57,9 +72,11 @@ export default function ForgeStage({ isAdvancedMode, displayLevel, isForging, la
     if (advLastResult) spawnParticles(advLastResult.resultType);
   }, [advLastResult, spawnParticles]);
 
-  // 스테이지 이펙트 상태
+  // 스테이지 이펙트 상태 (resultVisible 동안만 표시)
   let stageState = null;
-  if (isAdvancedMode && advLastResult) {
+  if (!resultVisible) {
+    stageState = null;
+  } else if (isAdvancedMode && advLastResult) {
     if (advLastResult.resultType === AdvancedResultType.Destroyed) stageState = 'destroyed';
     else if (advLastResult.success) stageState = 'success';
     else stageState = 'fail';
