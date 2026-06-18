@@ -134,18 +134,15 @@ export default function Dashboard({ address, onConnect }) {
         {
           label: '전체 강화 시도',
           value: globalStats.completedAttempts.toLocaleString(),
-          sub: 'cumulative',
         },
         {
           label: '전체 성공률',
           value: `${bpToPercent(globalStats.observedRateBp)}%`,
-          sub: `expected ~52.10%`,
           tone: 'success',
         },
         {
           label: '총 고유 유저',
           value: globalStats.uniqueUsers.toLocaleString(),
-          sub: `VRF 평균 대기 ${globalStats.avgVrfLatencySec?.toFixed(1) ?? '—'}s`,
         },
       ]
     : [];
@@ -203,7 +200,7 @@ export default function Dashboard({ address, onConnect }) {
           <>
             {/* ── 요약 카드 ── */}
             <div className={styles.summaryGrid}>
-              {summaryCards.map(({ label, value, sub, tone }) => (
+              {summaryCards.map(({ label, value, tone }) => (
                 <div key={label} className={styles.summaryCard}>
                   <div className="cf-cap">{label}</div>
                   <div
@@ -212,7 +209,6 @@ export default function Dashboard({ address, onConnect }) {
                   >
                     {value}
                   </div>
-                  <div className={styles.summarySub}>{sub}</div>
                 </div>
               ))}
             </div>
