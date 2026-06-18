@@ -215,6 +215,7 @@ export default function Game({ address, onConnect, wallet }) {
       setAdvRiskyTable(buildTable(AdvancedMode.Risky, stats?.risky, true));
     });
 
+    // 최근 강화 결과: 전체 사용자(글로벌) 피드. '전체 보기'는 대시보드로 이동.
     Promise.all([
       fetchRecentAttempts(8),
       fetchAdvancedRecentAttempts(8),
