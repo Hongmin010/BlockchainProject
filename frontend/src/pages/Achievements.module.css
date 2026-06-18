@@ -119,38 +119,6 @@
   box-shadow: var(--shadow-card);
 }
 
-/* ── 등급 배지 ── */
-.rarity {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 999px;
-  text-transform: uppercase;
-  font-family: var(--mono);
-}
-
-.rarityEpic {
-  background: rgba(168, 85, 247, 0.16);
-  color: #c79bf5;
-  border: 1px solid rgba(168, 85, 247, 0.4);
-}
-
-.rarityLegendary {
-  background: rgba(255, 122, 26, 0.16);
-  color: var(--ember-300);
-  border: 1px solid rgba(255, 122, 26, 0.4);
-}
-
-.rarityMythic {
-  background: rgba(232, 98, 60, 0.16);
-  color: #f08a6c;
-  border: 1px solid rgba(232, 98, 60, 0.4);
-}
-
 /* ── 카드 내용 ── */
 .icon {
   font-size: 44px;

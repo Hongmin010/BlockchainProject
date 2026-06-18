@@ -1,5 +1,5 @@
 import styles from '../Game.module.css';
-import { CAT_EMOJIS } from './constants';
+import { catImageForLevel } from './constants';
 
 // 보유 고양이 선택 목록 (로딩/에러/빈 상태 포함)
 export default function CatList({ items, selectedItemId, onSelect, loading, error }) {
@@ -13,6 +13,7 @@ export default function CatList({ items, selectedItemId, onSelect, loading, erro
           {items.map((item) => {
             const iid = Number(item.itemId);
             const isSelected = iid === selectedItemId;
+            const lvl = item.totalLevel ?? item.level;
             return (
               <button
                 key={iid}
@@ -20,7 +21,7 @@ export default function CatList({ items, selectedItemId, onSelect, loading, erro
                 onClick={() => onSelect(iid)}
               >
                 <span className={styles.catListEmoji}>
-                  {CAT_EMOJIS[Math.min(item.totalLevel ?? item.level, CAT_EMOJIS.length - 1)]}
+                  <img src={catImageForLevel(lvl)} alt={`Lv.${lvl} 고양이`} className={styles.catListImage} />
                 </span>
                 <span className={`${styles.catListMeta} ${isSelected ? styles.catListMetaSelected : ''}`}>
                   #{iid} · Lv.{item.totalLevel ?? item.level}

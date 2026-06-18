@@ -4,17 +4,20 @@ import { useNavigate } from 'react-router-dom';
 import { Header, Badge, Button, StageBar } from '../components';
 import { WalletModal } from '../components';
 import { useForge } from '../hooks/useForge';
-import { useAdvancedForge, AdvancedMode, MAX_EXTRA_LEVEL, MAX_TOTAL_LEVEL } from '../hooks/useAdvancedForge';
+import {
+  useAdvancedForge,
+  AdvancedMode,
+  MAX_EXTRA_LEVEL,
+  MAX_TOTAL_LEVEL,
+  fetchDeclaredAdvancedRates,
+} from '../hooks/useAdvancedForge';
 import {
   fetchRecentAttempts,
   fetchProbabilityHistory,
   fetchMerkleProof,
   fetchUserStats,
   fetchMerkleItems,
-  fetchAdvancedStats,
-  fetchAdvancedRatesHistory,
   fetchAdvancedRecentAttempts,
-  latestAdvancedRates,
 } from '../api/api';
 import CatList from './Game/CatList';
 import ForgeStage from './Game/ForgeStage';
@@ -95,6 +98,10 @@ export default function Game({ address, onConnect, wallet }) {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(1);
+  // displayLevel(훅 라이브 레벨)이 실제로 반영하는 아이템 id.
+  // 선택 전환 직후엔 refreshState가 아직 안 끝나 displayLevel이 직전 아이템 값이므로,
+  // 이 값이 selectedItemId와 일치할 때만 목록 썸네일을 라이브 레벨로 덮어쓴다.
+  const [liveLevelItemId, setLiveLevelItemId] = useState(null);
 
   // ── 상급 해금 알림 ────────────────────────────────────────────
   const [showAdvancedUnlock, setShowAdvancedUnlock] = useState(false);
@@ -153,8 +160,14 @@ export default function Game({ address, onConnect, wallet }) {
 
   // 선택 아이템 변경 시 훅 상태 동기화
   useEffect(() => {
-    refreshState(selectedItemId);
-    advRefreshState(selectedItemId);
+    let cancelled = false;
+    setLiveLevelItemId(null); // 새 선택 → 라이브 레벨 갱신 전까지 덮어쓰기 보류
+    Promise.all([refreshState(selectedItemId), advRefreshState(selectedItemId)]).then(() => {
+      if (!cancelled) setLiveLevelItemId(selectedItemId);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedItemId, refreshState, advRefreshState]);
 
   // 마운트 시 확률표 + 최근 결과 로드
@@ -175,36 +188,22 @@ export default function Game({ address, onConnect, wallet }) {
       })
       .catch(() => {});
 
-    // 확률표: rates/history의 (mode, 단계)별 최신 확률 우선,
-    // 이력이 없는 단계는 stats 행으로 폴백 (stats는 그룹 순서상 최신 보장이 없음)
-    Promise.all([
-      fetchAdvancedRatesHistory().catch(() => null),
-      fetchAdvancedStats().catch(() => null),
-    ]).then(([ratesData, stats]) => {
-      const latest = latestAdvancedRates(ratesData?.history);
-      const buildTable = (mode, statsRows, withDestroy) =>
-        DEFAULT_ADV_PROB_TABLE.map((row, i) => {
-          const hist = latest.get(`${mode}-${i}`);
-          if (hist) {
-            return {
-              ...row,
-              successProb: hist.newSuccessRateBp / 100,
-              destroyProb: withDestroy ? hist.newDestroyRateBp / 100 : row.destroyProb,
-            };
-          }
-          const match = (statsRows ?? []).find((s) => s.extraLevel === i);
-          return match
-            ? {
-                ...row,
-                successProb: match.declaredSuccessRateBp / 100,
-                destroyProb: withDestroy ? match.declaredDestroyRateBp / 100 : row.destroyProb,
-              }
-            : row;
-        });
-      setAdvSafeTable(buildTable(AdvancedMode.Safe, stats?.safe, false));
-      setAdvRiskyTable(buildTable(AdvancedMode.Risky, stats?.risky, true));
-    });
+    // 상급 확률표: 선언 확률을 백엔드 거치지 않고 컨트랙트에서 직접 읽는다.
+    // (투명성 주제 — 화면의 숫자가 곧 온체인 값. 누구나 컨트랙트로 검증 가능)
+    fetchDeclaredAdvancedRates()
+      .then(({ safe, risky }) => {
+        const fill = (rates) =>
+          DEFAULT_ADV_PROB_TABLE.map((row, i) => ({
+            ...row,
+            successProb: rates[i].successProb,
+            destroyProb: rates[i].destroyProb,
+          }));
+        setAdvSafeTable(fill(safe));
+        setAdvRiskyTable(fill(risky));
+      })
+      .catch((err) => console.error('[Game] 상급 선언 확률 로드 실패:', err));
 
+    // 최근 강화 결과: 전체 사용자(글로벌) 피드. '전체 보기'는 대시보드로 이동.
     Promise.all([
       fetchRecentAttempts(8),
       fetchAdvancedRecentAttempts(8),
@@ -297,8 +296,10 @@ export default function Game({ address, onConnect, wallet }) {
   // 목록은 인덱서 DB(fetchUserStats) 기반이라 인덱싱이 밀리면 stale함.
   // 현재 선택된 고양이는 컨트랙트 직접 조회값(displayLevel)이 있으므로 그 라이브 레벨로 덮어써
   // 무대/현재 단계와 목록 썸네일 레벨이 어긋나지 않게 한다.
+  // 단, 라이브 레벨이 선택 아이템 것으로 확정됐을 때만(liveLevelItemId 일치) 덮어쓴다.
+  // 선택 전환 직후엔 displayLevel이 직전 아이템 값이라 덮어쓰면 썸네일이 깜빡인다.
   const displayItems = userItems.map((it) =>
-    Number(it.itemId) === selectedItemId
+    Number(it.itemId) === selectedItemId && liveLevelItemId === selectedItemId
       ? { ...it, level: displayLevel, totalLevel: displayLevel }
       : it
   );

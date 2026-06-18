@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom';
 import { Badge, TxHash } from '../../components';
-import { formatDateTime, shortenTx } from '../../api/api';
+import { formatDateTime } from '../../api/api';
 import styles from '../Game.module.css';
 
 const ADV_BADGE = { 0: '실패', 1: '성공', 2: '하락', 3: '파괴', 4: '보장' };
 
-// 최근 강화 결과 카드 (일반 + 상급 기록 병합, 글로벌)
+// 최근 강화 결과 카드 (전체 사용자의 일반 + 상급 기록 병합, 글로벌)
 export default function RecentAttemptsCard({ attempts, advAttempts, loading }) {
   const rows = [
     ...attempts.map((a) => ({
-      tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
+      txHash: a.requestedTxHash ?? null,
+      attemptId: a.attemptId,
       stage: `Lv.${a.beforeLevel}`,
       success: a.success,
       isAdvanced: false,
@@ -17,7 +18,8 @@ export default function RecentAttemptsCard({ attempts, advAttempts, loading }) {
       time: formatDateTime(a.requestedAt),
     })),
     ...advAttempts.map((a) => ({
-      tx: a.requestedTxHash ? shortenTx(a.requestedTxHash) : `#${a.attemptId}`,
+      txHash: a.requestedTxHash ?? null,
+      attemptId: a.attemptId,
       stage: `Lv.${a.beforeTotalLevel}`,
       success: a.resultType === 1 || a.resultType === 4,
       isAdvanced: true,
@@ -48,10 +50,14 @@ export default function RecentAttemptsCard({ attempts, advAttempts, loading }) {
             기록 없음
           </div>
         ) : (
-          rows.map(({ tx, stage, success, isAdvanced, modeLabel, resultType, time }, idx) => (
+          rows.map(({ txHash, attemptId, stage, success, isAdvanced, modeLabel, resultType, time }, idx) => (
             <div key={idx} className={styles.recentRow}>
               <div className={styles.recentInfo}>
-                <TxHash hash={tx} shorten={false} />
+                {txHash ? (
+                  <TxHash hash={txHash} />
+                ) : (
+                  <span className={styles.recentSub}>#{attemptId}</span>
+                )}
                 <span className={styles.recentSub}>
                   {stage} · {time}
                   {isAdvanced && (
@@ -68,8 +74,8 @@ export default function RecentAttemptsCard({ attempts, advAttempts, loading }) {
           ))
         )}
         <div className={styles.recentMore}>
-          <Link to="/records" className={styles.recentMoreLink}>
-            전체 보기 →
+          <Link to="/dashboard" className={styles.recentMoreLink}>
+            통계 보기 →
           </Link>
         </div>
       </div>

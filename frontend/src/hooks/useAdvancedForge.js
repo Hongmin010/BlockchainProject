@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Contract } from 'ethers';
+import { Contract, JsonRpcProvider } from 'ethers';
 import ABI from '../abi/AdvancedEnhancementGameVRF.abi.json';
 
 const CONTRACT_ADDRESS = import.meta.env.VITE_ADVANCED_CONTRACT_ADDRESS;
+const RPC_URL = import.meta.env.VITE_RPC_URL;
 
 // 상급 강화 결과 타입 (컨트랙트 AdvancedResultType enum과 동일)
 export const AdvancedResultType = {
@@ -25,6 +26,38 @@ export const MAX_TOTAL_LEVEL = 20;
 
 function getContract(signerOrProvider) {
   return new Contract(CONTRACT_ADDRESS, ABI, signerOrProvider);
+}
+
+// 컨트랙트에 선언된 상급 강화 확률표를 온체인에서 직접 읽어온다.
+// 백엔드를 거치지 않으므로 화면의 숫자가 곧 온체인 값 — 누구나 컨트랙트로 검증 가능하다.
+// 지갑 미연결 상태에서도 표가 보이도록 provider가 없으면 공개 RPC로 폴백한다.
+//
+// 30개를 한꺼번에 쏘면 공개 RPC가 rate-limit으로 빈 응답(CALL_EXCEPTION)을 주므로,
+// 배칭을 끄고(batchMaxCount:1) 각 모드를 한 단계씩 순차로 읽되, 두 모드만 병렬로 돌린다
+// (동시성 2-wide ≈ 4초). 정적 데이터라 1회만 로드한다.
+//
+// 반환: { safe: [{ successProb, destroyProb }, ...], risky: [...] }
+//   - 각 배열 index = extraLevel(0 ~ MAX_EXTRA_LEVEL-1), 값 단위 = % (bp ÷ 100)
+export async function fetchDeclaredAdvancedRates(provider = null) {
+  const reader =
+    provider ?? new JsonRpcProvider(RPC_URL, undefined, { staticNetwork: true, batchMaxCount: 1 });
+  const contract = getContract(reader);
+  const readMode = async (mode) => {
+    const rows = [];
+    for (let extraLevel = 0; extraLevel < MAX_EXTRA_LEVEL; extraLevel++) {
+      const [successRateBps, destroyRateBps] = await contract.advancedRates(mode, extraLevel);
+      rows.push({
+        successProb: Number(successRateBps) / 100,
+        destroyProb: Number(destroyRateBps) / 100,
+      });
+    }
+    return rows;
+  };
+  const [safe, risky] = await Promise.all([
+    readMode(AdvancedMode.Safe),
+    readMode(AdvancedMode.Risky),
+  ]);
+  return { safe, risky };
 }
 
 export function useAdvancedForge({ signer, provider, address }) {
