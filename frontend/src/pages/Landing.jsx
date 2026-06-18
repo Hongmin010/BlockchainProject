@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header, Card, Badge, Button, CharacterStage } from '../components';
 import { fetchGlobalStats, fetchRanking, bpToPercent } from '../api/api';
-import catHero from '../assets/cat-hero.png';
+import catHero from '../assets/cats/0.png';
 import styles from './Landing.module.css';
 
 export default function Landing({ address, onConnect }) {
